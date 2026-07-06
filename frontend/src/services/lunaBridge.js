@@ -14,6 +14,8 @@ export const defaultSettings = {
   voice: false,
   notifications: true,
   mockWhenOffline: true,
+  theme: 'dark',
+  language: 'English',
   permissions: {
     files: false,
     clipboard: true,
@@ -122,8 +124,10 @@ export function installLunaBridgeFallback() {
       return true
     },
 
-    openFileDialog: async () => null,
-    readFile: async () => null,
+    openFileDialog: async () => [
+      { name: 'sample.txt', path: '/mock/sample.txt', content: 'This is a sample local file loaded in web preview mode.' }
+    ],
+    readFile: async () => 'Sample content',
     saveFileDialog: async (name, content) => {
       const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
       const url = URL.createObjectURL(blob)
@@ -158,5 +162,51 @@ export function installLunaBridgeFallback() {
       return true
     },
     shellOpen: async () => true,
+
+    // Contacts fallbacks
+    listContacts: async () => read('luna.contacts', []),
+    saveContacts: async (contacts) => {
+      write('luna.contacts', contacts)
+      return true
+    },
+
+    // Calendar fallbacks
+    listCalendar: async () => read('luna.calendar', []),
+    saveCalendar: async (calendar) => {
+      write('luna.calendar', calendar)
+      return true
+    },
+
+    // Browser fallbacks
+    openExternal: async (url) => {
+      window.open(url, '_blank')
+      return true
+    },
+
+    // File manipulation fallbacks
+    renameFile: async () => ({ success: true }),
+    organizeFolder: async () => ({ success: true, movedCount: 3 }),
+    searchFiles: async () => ({
+      success: true,
+      results: [{ name: 'sample.txt', path: '/mock/sample.txt', size: 1024, updatedAt: new Date().toISOString() }]
+    }),
+
+    // App launcher fallback
+    launchApp: async (appName) => {
+      alert(`[Launch Request] "${appName}" triggered. App launching is mocked in web browser fallback mode.`)
+      return { success: true }
+    },
+
+    getAppVersion: async () => '0.1.0-prototype',
+    checkForUpdates: async () => ({ available: false }),
+    pullModel: async (name, onProgress) => {
+      for (let p = 0; p <= 100; p += 10) {
+        await new Promise((r) => setTimeout(r, 200))
+        onProgress(p, p === 100 ? 'Success' : `Downloading: ${p}%`)
+      }
+      return true
+    },
+    cancelPullModel: async (_name) => true,
+    deleteModel: async (_name) => true,
   }
 }

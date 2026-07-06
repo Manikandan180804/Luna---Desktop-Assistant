@@ -1,7 +1,8 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { Database, Download, EyeOff, FolderOpen, Lock, Shield, Trash2, Wand2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { toast } from '../components/Toast'
+import ConfirmDeleteModal from '../components/ConfirmDeleteModal'
 
 function Toggle({ checked, onChange }) {
   return (
@@ -13,7 +14,9 @@ function Toggle({ checked, onChange }) {
 }
 
 export default function PrivacyPage() {
-  const { memory, conversations, tasks, notes, clearMemory, saveSettings, settings } = useApp()
+  const { memory, conversations, tasks, notes, clearMemory, clearAllConversations, saveSettings, settings } = useApp()
+  const [confirmClearMemory, setConfirmClearMemory] = useState(false)
+  const [confirmClearConvs, setConfirmClearConvs] = useState(false)
   const permissions = settings.permissions || {}
   const totalData = memory.length + conversations.length + tasks.length + notes.length
 
@@ -25,6 +28,13 @@ export default function PrivacyPage() {
   const handleClearMemory = async () => {
     await clearMemory()
     toast.success('All memory cleared')
+    setConfirmClearMemory(false)
+  }
+
+  const handleClearConversations = async () => {
+    await clearAllConversations()
+    toast.success('All conversations cleared')
+    setConfirmClearConvs(false)
   }
 
   const exportData = async () => {
@@ -47,7 +57,7 @@ export default function PrivacyPage() {
           { label: 'Total Records', value: totalData, icon: Lock },
         ].map(({ label, value, icon: Icon }) => (
           <div key={label} className="card" style={{ textAlign: 'center' }}>
-            <Icon size={22} color="var(--accent-light)" style={{ margin: '0 auto 10px' }} />
+            <Icon size={22} color="var(--accent)" style={{ margin: '0 auto 10px' }} />
             <div className="privacy-stat-value">{value}</div>
             <div className="privacy-stat-label">{label}</div>
           </div>
@@ -64,7 +74,7 @@ export default function PrivacyPage() {
             { key: 'automation', icon: Wand2, title: 'Desktop automation', desc: 'Stage local actions before execution.' },
           ].map(({ key, icon: Icon, title, desc }) => (
             <div key={key} className="setting-row">
-              <Icon size={16} color="var(--accent-light)" style={{ flexShrink: 0 }} />
+              <Icon size={16} color="var(--accent)" style={{ flexShrink: 0 }} />
               <div className="setting-info" style={{ marginLeft: 8 }}>
                 <div className="setting-name">{title}</div>
                 <div className="setting-desc">{desc}</div>
@@ -83,7 +93,16 @@ export default function PrivacyPage() {
                   <div className="setting-name">Clear all memory</div>
                   <div className="setting-desc">{memory.length} items stored</div>
                 </div>
-                <button className="btn btn-danger" onClick={handleClearMemory}>
+                <button className="btn btn-danger" onClick={() => setConfirmClearMemory(true)}>
+                  <Trash2 size={13} /> Clear
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="setting-name">Clear all conversations</div>
+                  <div className="setting-desc">{conversations.length} chats stored</div>
+                </div>
+                <button className="btn btn-danger" onClick={() => setConfirmClearConvs(true)}>
                   <Trash2 size={13} /> Clear
                 </button>
               </div>
@@ -107,7 +126,7 @@ export default function PrivacyPage() {
               { icon: Shield, title: 'Local inference policy', desc: 'Ollama is the primary AI bridge; mock mode is local and deterministic.' },
             ].map(({ icon: Icon, title, desc }) => (
               <div key={title} className="setting-row">
-                <Icon size={16} color="var(--accent-light)" style={{ flexShrink: 0 }} />
+                <Icon size={16} color="var(--accent)" style={{ flexShrink: 0 }} />
                 <div className="setting-info" style={{ marginLeft: 8 }}>
                   <div className="setting-name">{title}</div>
                   <div className="setting-desc">{desc}</div>
@@ -117,6 +136,22 @@ export default function PrivacyPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDeleteModal
+        open={confirmClearMemory}
+        title="Clear all memory?"
+        desc="This will delete all learned context and facts. This action cannot be undone."
+        onConfirm={handleClearMemory}
+        onCancel={() => setConfirmClearMemory(false)}
+      />
+
+      <ConfirmDeleteModal
+        open={confirmClearConvs}
+        title="Clear all conversations?"
+        desc="This will delete your entire chat history. This action cannot be undone."
+        onConfirm={handleClearConversations}
+        onCancel={() => setConfirmClearConvs(false)}
+      />
     </div>
   )
 }

@@ -11,6 +11,8 @@ export function AppProvider({ children }) {
   const [memory, setMemory] = useState([])
   const [tasks, setTasks] = useState([])
   const [notes, setNotes] = useState([])
+  const [contacts, setContacts] = useState([])
+  const [calendar, setCalendar] = useState([])
   const [ollamaStatus, setOllamaStatus] = useState('checking') // 'online' | 'offline' | 'checking'
   const [availableModels, setAvailableModels] = useState([])
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -28,6 +30,10 @@ export function AppProvider({ children }) {
       setTasks(t)
       const n = await window.luna.listNotes()
       setNotes(n)
+      const c = await window.luna.listContacts()
+      setContacts(c)
+      const cal = await window.luna.listCalendar()
+      setCalendar(cal)
     }
     init()
   }, [])
@@ -144,6 +150,14 @@ export function AppProvider({ children }) {
     if (activeConvId === id) setActiveConvId(null)
   }, [activeConvId])
 
+  const clearAllConversations = useCallback(async () => {
+    for (const c of conversations) {
+      await window.luna.deleteConversation(c.id)
+    }
+    setConversations([])
+    setActiveConvId(null)
+  }, [conversations])
+
   const activeConversation = conversations.find(c => c.id === activeConvId) || null
 
   // Memory helpers
@@ -174,6 +188,18 @@ export function AppProvider({ children }) {
     await window.luna.saveTasks(newTasks)
   }, [])
 
+  // Contacts helpers
+  const saveContacts = useCallback(async (newContacts) => {
+    setContacts(newContacts)
+    await window.luna.saveContacts(newContacts)
+  }, [])
+
+  // Calendar helpers
+  const saveCalendar = useCallback(async (newCalendar) => {
+    setCalendar(newCalendar)
+    await window.luna.saveCalendar(newCalendar)
+  }, [])
+
   // Notes helpers
   const saveNote = useCallback(async (note) => {
     const saved = await window.luna.saveNote(note)
@@ -196,11 +222,13 @@ export function AppProvider({ children }) {
     <AppContext.Provider value={{
       settings, saveSettings,
       conversations, activeConvId, setActiveConvId, activeConversation,
-      createConversation, updateConversation, deleteConversation,
+      createConversation, updateConversation, deleteConversation, clearAllConversations,
       memory, addMemory, deleteMemory, pinMemory,
       clearMemory,
       tasks, saveTasks,
       notes, saveNote, deleteNote,
+      contacts, saveContacts,
+      calendar, saveCalendar,
       ollamaStatus, availableModels, checkOllama,
       sidebarOpen, setSidebarOpen,
     }}>

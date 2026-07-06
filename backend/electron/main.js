@@ -18,6 +18,8 @@ const CONVERSATIONS_DIR = path.join(DATA_DIR, 'conversations');
 const MEMORY_FILE = path.join(DATA_DIR, 'memory.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
+const CONTACTS_FILE = path.join(DATA_DIR, 'contacts.json');
+const CALENDAR_FILE = path.join(DATA_DIR, 'calendar.json');
 const NOTES_DIR = path.join(DATA_DIR, 'notes');
 
 function ensureDirs() {
@@ -196,6 +198,37 @@ function saveTasks(t) { fs.writeFileSync(TASKS_FILE, JSON.stringify(t, null, 2))
 ipcMain.handle('tasks-list', () => loadTasks());
 ipcMain.handle('tasks-save', (_e, tasks) => { saveTasks(tasks); return true; });
 
+// ── IPC: Contacts ─────────────────────────────────────────────────────────────
+function loadContacts() {
+  try { if (fs.existsSync(CONTACTS_FILE)) return JSON.parse(fs.readFileSync(CONTACTS_FILE, 'utf-8')); }
+  catch {}
+  return [];
+}
+function saveContacts(c) { fs.writeFileSync(CONTACTS_FILE, JSON.stringify(c, null, 2)); }
+
+ipcMain.handle('contacts-list', () => loadContacts());
+ipcMain.handle('contacts-save', (_e, contacts) => { saveContacts(contacts); return true; });
+
+// ── IPC: Calendar ─────────────────────────────────────────────────────────────
+function loadCalendar() {
+  try { if (fs.existsSync(CALENDAR_FILE)) return JSON.parse(fs.readFileSync(CALENDAR_FILE, 'utf-8')); }
+  catch {}
+  return [];
+}
+function saveCalendar(cal) { fs.writeFileSync(CALENDAR_FILE, JSON.stringify(cal, null, 2)); }
+
+ipcMain.handle('calendar-list', () => loadCalendar());
+ipcMain.handle('calendar-save', (_e, cal) => { saveCalendar(cal); return true; });
+
+ipcMain.handle('shell-open-external', async (_e, url) => {
+  try {
+    await shell.openExternal(url);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
 // ── IPC: Notes ────────────────────────────────────────────────────────────────
 ipcMain.handle('notes-list', () => {
   try {
@@ -235,6 +268,8 @@ ipcMain.handle('file-open-dialog', async () => {
     try {
       if (['.txt', '.md', '.json', '.csv'].includes(ext)) {
         content = fs.readFileSync(fp, 'utf-8');
+      } else if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
+        content = fs.readFileSync(fp, 'base64');
       } else if (ext === '.pdf' && pdfParse) {
         const buffer = fs.readFileSync(fp);
         const data = await pdfParse(buffer);
@@ -265,6 +300,113 @@ ipcMain.handle('file-save-dialog', async (_e, defaultName, content) => {
   return true;
 });
 
+ipcMain.handle('file-rename', async (_e, oldPath, newPath) => {
+  try {
+    if (!fs.existsSync(oldPath)) return { success: false, error: 'Source file does not exist.' };
+    fs.renameSync(oldPath, newPath);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('file-organize', async (_e, folderPath) => {
+  try {
+    if (!fs.existsSync(folderPath)) return { success: false, error: 'Folder does not exist.' };
+    const files = fs.readdirSync(folderPath);
+    let movedCount = 0;
+    const categoryMap = {
+      Documents: ['.pdf', '.docx', '.doc', '.txt', '.xlsx', '.pptx', '.csv', '.md', '.json'],
+      Images: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'],
+      Media: ['.mp3', '.wav', '.mp4', '.mkv', '.avi'],
+      Archives: ['.zip', '.rar', '.7z', '.tar', '.gz'],
+    };
+    for (const file of files) {
+      const fullPath = path.join(folderPath, file);
+      if (fs.statSync(fullPath).isDirectory()) continue;
+      const ext = path.extname(file).toLowerCase();
+      let category = 'Others';
+      for (const [catName, extensions] of Object.entries(categoryMap)) {
+        if (extensions.includes(ext)) {
+          category = catName;
+          break;
+        }
+      }
+      const destDir = path.join(folderPath, category);
+      if (!fs.existsSync(destDir)) {
+        fs.mkdirSync(destDir);
+      }
+      fs.renameSync(fullPath, path.join(destDir, file));
+      movedCount++;
+    }
+    return { success: true, movedCount };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('file-search', async (_e, folderPath, query) => {
+  try {
+    if (!fs.existsSync(folderPath)) return { success: false, error: 'Folder does not exist.' };
+    const results = [];
+    const searchRegex = new RegExp(query, 'i');
+    function scan(dir) {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        const fullPath = path.join(dir, file);
+        let stat;
+        try {
+          stat = fs.statSync(fullPath);
+        } catch { continue; }
+        if (stat.isDirectory()) {
+          if (!['node_modules', '.git', 'dist', 'build'].includes(file)) {
+            scan(fullPath);
+          }
+        } else {
+          if (searchRegex.test(file)) {
+            results.push({
+              name: file,
+              path: fullPath,
+              size: stat.size,
+              updatedAt: stat.mtime.toISOString(),
+            });
+          }
+        }
+      }
+    }
+    scan(folderPath);
+    return { success: true, results: results.slice(0, 100) };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('app-launch', async (_e, appName) => {
+  const { exec } = require('child_process');
+  return new Promise((resolve) => {
+    const appMap = {
+      chrome: 'start chrome',
+      browser: 'start chrome',
+      notepad: 'notepad.exe',
+      editor: 'notepad.exe',
+      calc: 'calc.exe',
+      calculator: 'calc.exe',
+      paint: 'mspaint.exe',
+      explorer: 'explorer.exe',
+      cmd: 'cmd.exe',
+      powershell: 'powershell.exe'
+    };
+    const command = appMap[appName.toLowerCase()] || appName;
+    exec(command, (error) => {
+      if (error) {
+        resolve({ success: false, error: error.message });
+      } else {
+        resolve({ success: true });
+      }
+    });
+  });
+});
+
 // ── IPC: System info ──────────────────────────────────────────────────────────
 ipcMain.handle('system-info', () => ({
   platform: process.platform,
@@ -291,3 +433,104 @@ ipcMain.handle('notify', (_e, title, body) => {
 
 // ── IPC: Shell open ───────────────────────────────────────────────────────────
 ipcMain.handle('shell-open', (_e, target) => { shell.openPath(target); return true; });
+
+// Active pulls abort controllers map
+const activePulls = new Map();
+
+function getOllamaUrl() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const s = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+      return s.ollamaUrl || 'http://localhost:11434';
+    }
+  } catch {}
+  return 'http://localhost:11434';
+}
+
+// ── IPC: Models & Updates ──────────────────────────────────────────────────────
+ipcMain.handle('model-pull', async (event, name) => {
+  const url = getOllamaUrl();
+  const controller = new AbortController();
+  activePulls.set(name, controller);
+  try {
+    const res = await fetch(`${url}/api/pull`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+      signal: controller.signal
+    });
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    
+    const decoder = new TextDecoder();
+    let buffer = '';
+    
+    for await (const chunk of res.body) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep last incomplete line
+      
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const data = JSON.parse(line);
+          let percent = 0;
+          if (data.total) {
+            percent = Math.round((data.completed / data.total) * 100);
+          }
+          mainWindow?.webContents.send('model-pull-progress', {
+            name,
+            percent,
+            status: data.status || 'Downloading',
+          });
+        } catch {}
+      }
+    }
+    // Send 100% completion status
+    mainWindow?.webContents.send('model-pull-progress', {
+      name,
+      percent: 100,
+      status: 'Success',
+    });
+    return true;
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      console.log(`Pull of model ${name} was aborted.`);
+      throw err;
+    }
+    console.error(err);
+    throw err;
+  } finally {
+    activePulls.delete(name);
+  }
+});
+
+ipcMain.handle('model-pull-cancel', (_e, name) => {
+  const controller = activePulls.get(name);
+  if (controller) {
+    controller.abort();
+    activePulls.delete(name);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('model-delete', async (_e, name) => {
+  const url = getOllamaUrl();
+  try {
+    const res = await fetch(`${url}/api/delete`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle('app-version', () => app.getVersion());
+
+ipcMain.handle('app-check-updates', () => {
+  return { available: false };
+});
+

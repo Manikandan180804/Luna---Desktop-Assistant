@@ -7,8 +7,12 @@ import ChatPage from './pages/ChatPage'
 import MemoryPage from './pages/MemoryPage'
 import TasksPage from './pages/TasksPage'
 import NotesPage from './pages/NotesPage'
+import ConnectorsPage from './pages/ConnectorsPage'
 import SettingsPage from './pages/SettingsPage'
 import PrivacyPage from './pages/PrivacyPage'
+import HistoryPage from './pages/HistoryPage'
+import ModelsPage from './pages/ModelsPage'
+import AboutPage from './pages/AboutPage'
 import Onboarding from './pages/Onboarding'
 import Toast from './components/Toast'
 
@@ -50,8 +54,12 @@ function AppInner() {
             <Route path="/memory" element={<MemoryPage />} />
             <Route path="/tasks" element={<TasksPage />} />
             <Route path="/notes" element={<NotesPage />} />
+            <Route path="/connectors" element={<ConnectorsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/models" element={<ModelsPage />} />
+            <Route path="/about" element={<AboutPage />} />
           </Routes>
         </div>
       </div>

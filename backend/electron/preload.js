@@ -35,9 +35,13 @@ contextBridge.exposeInMainWorld('luna', {
   openFileDialog: () => ipcRenderer.invoke('file-open-dialog'),
   readFile: (path) => ipcRenderer.invoke('file-read', path),
   saveFileDialog: (name, content) => ipcRenderer.invoke('file-save-dialog', name, content),
+  renameFile: (oldPath, newPath) => ipcRenderer.invoke('file-rename', oldPath, newPath),
+  organizeFolder: (folderPath) => ipcRenderer.invoke('file-organize', folderPath),
+  searchFiles: (folderPath, query) => ipcRenderer.invoke('file-search', folderPath, query),
 
   // System
   systemInfo: () => ipcRenderer.invoke('system-info'),
+  launchApp: (appName) => ipcRenderer.invoke('app-launch', appName),
 
   // Clipboard
   writeClipboard: (text) => ipcRenderer.invoke('clipboard-write', text),
@@ -46,8 +50,36 @@ contextBridge.exposeInMainWorld('luna', {
   // Notifications
   notify: (title, body) => ipcRenderer.invoke('notify', title, body),
 
+  // Contacts
+  listContacts: () => ipcRenderer.invoke('contacts-list'),
+  saveContacts: (contacts) => ipcRenderer.invoke('contacts-save', contacts),
+
+  // Calendar
+  listCalendar: () => ipcRenderer.invoke('calendar-list'),
+  saveCalendar: (calendar) => ipcRenderer.invoke('calendar-save', calendar),
+
   // Shell
   shellOpen: (target) => ipcRenderer.invoke('shell-open', target),
+  openExternal: (url) => ipcRenderer.invoke('shell-open-external', url),
+
+  // Models
+  pullModel: (name, onProgress) => {
+    const listener = (_e, data) => {
+      if (data.name === name) {
+        onProgress(data.percent, data.status);
+      }
+    };
+    ipcRenderer.on('model-pull-progress', listener);
+    return ipcRenderer.invoke('model-pull', name).finally(() => {
+      ipcRenderer.removeListener('model-pull-progress', listener);
+    });
+  },
+  cancelPullModel: (name) => ipcRenderer.invoke('model-pull-cancel', name),
+  deleteModel: (name) => ipcRenderer.invoke('model-delete', name),
+
+  // App version & updates
+  getAppVersion: () => ipcRenderer.invoke('app-version'),
+  checkForUpdates: () => ipcRenderer.invoke('app-check-updates'),
 
   // Listeners
   onWindowStateChanged: (callback) => {
