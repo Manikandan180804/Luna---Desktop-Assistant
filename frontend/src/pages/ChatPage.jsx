@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Paperclip, Brain, Copy, RefreshCw, Sparkles, X } from 'lucide-react'
+import { Send, Paperclip, Brain, Copy, RefreshCw, Sparkles, X, Mic, MicOff, Volume2, VolumeX } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { v4 as uuidv4 } from 'uuid'
 import { useApp } from '../context/AppContext'
@@ -7,6 +7,9 @@ import { toast } from '../components/Toast'
 import { streamAssistantReply } from '../services/inference'
 import { getTranslation } from '../services/translations'
 import PermissionModal from '../components/PermissionModal'
+import ActionCard from '../components/ActionCard'
+import { parseIntent } from '../services/intentHandler'
+import { speakText, stopSpeaking, VoiceRecognition } from '../services/voiceService'
 
 function TypingIndicator({ assistantName = 'Luna' }) {
   const { settings } = useApp()
@@ -101,6 +104,149 @@ function TypingIndicator({ assistantName = 'Luna' }) {
   )
 }
 
+// ─── Action executor ─────────────────────────────────────────────────────────
+async function executeIntent(intent, settings, onProgress) {
+  const type = intent.type
+
+  // ── Summarize PDF ──────────────────────────────────────────────────────────
+  if (type === 'SUMMARIZE_PDF') {
+    onProgress({ type, status: 'info', label: 'PDF Summary', detail: 'Attach a PDF, .txt, .md or .docx file using 📎 then ask again.' })
+    return
+  }
+
+  // ── Create reminder ────────────────────────────────────────────────────────
+  if (type === 'CREATE_REMINDER') {
+    const { topic, delayMs, dueLabel } = intent
+    onProgress({ type, status: 'pending', label: 'Setting Reminder…', detail: topic })
+    setTimeout(async () => {
+      if (settings?.notifications) {
+        await window.luna.notify('⏰ Luna Reminder', topic)
+      }
+      toast.info(`⏰ REMINDER: ${topic}`)
+    }, delayMs)
+    onProgress({ type, status: 'success', label: 'Reminder Set', detail: topic, topic, dueLabel })
+    return
+  }
+
+  // ── Search files ───────────────────────────────────────────────────────────
+  if (type === 'SEARCH_FILES') {
+    const { query } = intent
+    onProgress({ type, status: 'pending', label: 'Searching Files…', detail: `Looking for "${query}"` })
+    try {
+      // Try to pick folder if not previously set
+      let folderPath = null
+      try {
+        folderPath = await window.luna.openFolderDialog()
+      } catch {
+        // If openFolderDialog not supported fall back to home
+      }
+      if (!folderPath) {
+        // Fallback: search home/Documents
+        try {
+          const sysInfo = await window.luna.systemInfo()
+          folderPath = sysInfo?.homeDir || null
+        } catch {}
+      }
+      if (!folderPath || folderPath.startsWith('/mock')) {
+        onProgress({
+          type, status: 'success', label: 'File Search',
+          detail: `Search for "${query}"`,
+          results: [{ name: 'resume.pdf', path: '/mock/Documents/resume.pdf', size: 204800, updatedAt: new Date().toISOString() }]
+        })
+        return
+      }
+      const res = await window.luna.searchFiles(folderPath, query)
+      if (res.success) {
+        onProgress({
+          type, status: 'success',
+          label: `File Search — ${res.results.length} result${res.results.length !== 1 ? 's' : ''}`,
+          detail: `Searched for "${query}" in ${folderPath}`,
+          results: res.results,
+        })
+      } else {
+        onProgress({ type, status: 'error', label: 'File Search Failed', error: res.error })
+      }
+    } catch (err) {
+      onProgress({ type, status: 'error', label: 'File Search Failed', error: err.message })
+    }
+    return
+  }
+
+  // ── Organize folder ────────────────────────────────────────────────────────
+  if (type === 'ORGANIZE_FOLDER') {
+    const { folder } = intent
+    onProgress({ type, status: 'pending', label: `Organizing ${folder}…`, detail: 'Pick a folder to organize' })
+    try {
+      let folderPath = null
+      try {
+        folderPath = await window.luna.openFolderDialog()
+      } catch {}
+      if (!folderPath || folderPath.startsWith('/mock')) {
+        // Mock success
+        onProgress({ type, status: 'success', label: `${folder} Organized`, detail: `Files sorted into subfolders`, movedCount: 12 })
+        return
+      }
+      const res = await window.luna.organizeFolder(folderPath)
+      if (res.success) {
+        onProgress({ type, status: 'success', label: `Folder Organized`, detail: folderPath, movedCount: res.movedCount })
+        toast.success(`Organized ${res.movedCount} files`)
+      } else {
+        onProgress({ type, status: 'error', label: 'Organize Failed', error: res.error })
+      }
+    } catch (err) {
+      onProgress({ type, status: 'error', label: 'Organize Failed', error: err.message })
+    }
+    return
+  }
+
+  // ── Open URL ───────────────────────────────────────────────────────────────
+  if (type === 'OPEN_URL') {
+    const { url, label } = intent
+    onProgress({ type, status: 'pending', label: `Opening ${label || url}…` })
+    try {
+      await window.luna.openExternal(url)
+      onProgress({ type, status: 'success', label: `Opened ${label || url}`, url })
+      toast.success(`Opened ${label || url}`)
+    } catch (err) {
+      onProgress({ type, status: 'error', label: 'Failed to Open URL', error: err.message })
+    }
+    return
+  }
+
+  // ── Launch app ─────────────────────────────────────────────────────────────
+  if (type === 'OPEN_APP') {
+    const { appKey, label } = intent
+    onProgress({ type, status: 'pending', label: `Launching ${label}…` })
+    try {
+      const res = await window.luna.launchApp(appKey)
+      if (res.success) {
+        onProgress({ type, status: 'success', label: `${label} Launched`, appLabel: label })
+        toast.success(`Launched ${label}`)
+      } else {
+        onProgress({ type, status: 'error', label: `Launch Failed`, error: res.error })
+        toast.error(`Failed to launch ${label}: ${res.error}`)
+      }
+    } catch (err) {
+      onProgress({ type, status: 'error', label: 'Launch Failed', error: err.message })
+    }
+    return
+  }
+
+  // ── Compose email ──────────────────────────────────────────────────────────
+  if (type === 'COMPOSE_EMAIL') {
+    const { to } = intent
+    const mailto = `mailto:${to}?subject=Luna%20Follow-up`
+    onProgress({ type, status: 'pending', label: 'Opening Email Client…' })
+    try {
+      await window.luna.openExternal(mailto)
+      onProgress({ type, status: 'success', label: 'Email Client Opened', url: mailto })
+    } catch (err) {
+      onProgress({ type, status: 'error', label: 'Failed to Open Email', error: err.message })
+    }
+  }
+}
+
+// ─── Message component ────────────────────────────────────────────────────────
 function Message({ msg, onCopy, onRegenerate }) {
   const { settings } = useApp()
   const t = getTranslation(settings?.language || 'English')
@@ -140,6 +286,8 @@ function Message({ msg, onCopy, onRegenerate }) {
                 </ReactMarkdown>
               </div>
             )}
+            {/* Inline action result card */}
+            {msg.actionCard && <ActionCard action={msg.actionCard} />}
           </div>
         </div>
         <div className="message-meta">
@@ -175,13 +323,127 @@ export default function ChatPage() {
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [permissionOpen, setPermissionOpen] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null) // { type: string, target: string, execute: () => void }
+  const [pendingAction, setPendingAction] = useState(null)
   const [attachments, setAttachments] = useState([])
+  // Map of assistantMessageId -> actionCard state (for live updates)
+  const [actionCards, setActionCards] = useState({})
+  const [isListening, setIsListening] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const activeRecRef = useRef(null)
+  const wakeWordRecRef = useRef(null)
   const chatMessagesRef = useRef(null)
   const textareaRef = useRef(null)
   const abortRef = useRef(null)
 
   const t = getTranslation(settings?.language || 'English')
+
+  // Stop speaking when user navigates or component unmounts
+  useEffect(() => {
+    return () => {
+      stopSpeaking()
+    }
+  }, [])
+
+  // ── Wake Word Background Listener ─────────────────────────────────────────
+  useEffect(() => {
+    if (!settings?.wakeWord) {
+      if (wakeWordRecRef.current) {
+        wakeWordRecRef.current.stop()
+        wakeWordRecRef.current = null
+      }
+      return
+    }
+
+    if (isListening || isSpeaking || isStreaming) {
+      // Pause wake word when active dialogue is happening
+      if (wakeWordRecRef.current) {
+        wakeWordRecRef.current.stop()
+      }
+      return
+    }
+
+    const initWakeWord = () => {
+      try {
+        const rec = new VoiceRecognition({ continuous: true, interimResults: false })
+        rec.onResultCallback = ({ final }) => {
+          const lower = final.toLowerCase()
+          if (lower.includes('luna') || lower.includes('hey luna')) {
+            toast.info('Luna is listening...')
+            // Active synthesis feedback
+            speakText('Yes?', { voiceName: settings?.voiceName, language: settings?.language }).then(() => {
+              setIsListening(true)
+            })
+          }
+        };
+        rec.onEndCallback = () => {
+          // Restart background listening automatically if it times out
+          if (settings?.wakeWord && !isListening && !isSpeaking && !isStreaming) {
+            rec.start()
+          }
+        };
+        wakeWordRecRef.current = rec
+        rec.start()
+      } catch (err) {
+        console.warn('Wake word system initialization failed:', err)
+      }
+    }
+
+    initWakeWord()
+
+    return () => {
+      if (wakeWordRecRef.current) {
+        wakeWordRecRef.current.stop()
+        wakeWordRecRef.current = null
+      }
+    }
+  }, [settings?.wakeWord, isListening, isSpeaking, isStreaming, settings?.voiceName, settings?.language])
+
+  // ── Active Speech Recognition ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!isListening) {
+      if (activeRecRef.current) {
+        activeRecRef.current.stop()
+        activeRecRef.current = null
+      }
+      return
+    }
+
+    // Stop speaking when starting to listen
+    stopSpeaking()
+    setIsSpeaking(false)
+
+    try {
+      const rec = new VoiceRecognition({ continuous: false, interimResults: true })
+      rec.onResultCallback = ({ final, interim }) => {
+        if (interim) {
+          setInput(interim)
+        }
+        if (final) {
+          setInput(final)
+          sendMessage(final)
+          setIsListening(false)
+        }
+      };
+      rec.onErrorCallback = (err) => {
+        console.warn('STT Error:', err)
+        setIsListening(false)
+      };
+      rec.onEndCallback = () => {
+        setIsListening(false)
+      };
+      activeRecRef.current = rec
+      rec.start()
+    } catch (err) {
+      toast.error('Could not start Speech Recognition')
+      setIsListening(false)
+    }
+
+    return () => {
+      if (activeRecRef.current) {
+        activeRecRef.current.stop()
+      }
+    }
+  }, [isListening])
 
   const suggestions = React.useMemo(() => {
     const lang = settings?.language || 'English'
@@ -237,10 +499,11 @@ export default function ChatPage() {
         ]
       default:
         return [
-          { title: 'Summarize a file', desc: 'Attach a text or markdown file' },
-          { title: 'Create a task list', desc: 'Plan the next practical steps' },
-          { title: 'Draft an email', desc: 'Write a clear editable draft' },
-          { title: 'Remember a preference', desc: 'Save useful context locally' },
+          { title: 'Summarize this PDF', desc: 'Attach a file and I\'ll extract key points' },
+          { title: 'Create a reminder for tomorrow', desc: 'I\'ll alert you at the right time' },
+          { title: 'Find my resume', desc: 'Search across your local folders' },
+          { title: 'Open Spotify', desc: 'Launch apps or websites by name' },
+          { title: 'Organize my Downloads folder', desc: 'Sort files into auto-categories' },
         ]
     }
   }, [settings?.language])
@@ -361,10 +624,10 @@ export default function ChatPage() {
         )
 
         const finalRawContent = result.content || content
-        const actionMatch = finalRawContent.match(/\[ACTION:\s*([A-Z_]+)\s*(.*?)\]/)
+        const actionTagMatch = finalRawContent.match(/\[ACTION:\s*([A-Z_]+)\s*(.*?)\]/)
         let cleanedContent = finalRawContent
         
-        if (actionMatch) {
+        if (actionTagMatch) {
           cleanedContent = finalRawContent.replace(/\[ACTION:\s*[A-Z_]+\s*.*?\]/g, '').trim()
         }
 
@@ -375,9 +638,48 @@ export default function ChatPage() {
         )
         await updateConversation(conversation.id, { messages: allMessages })
 
-        if (actionMatch) {
-          const actionType = actionMatch[1]
-          const actionArg = actionMatch[2].trim()
+        // ── Voice Output Synthesis ───────────────────────────────────────────
+        if (settings?.voice && cleanedContent) {
+          setIsSpeaking(true)
+          speakText(cleanedContent, {
+            voiceName: settings?.voiceName,
+            language: settings?.language
+          }).finally(() => {
+            setIsSpeaking(false)
+          })
+        }
+
+        // ── Intent detection & execution ──────────────────────────────────────
+        const intent = parseIntent(userContent)
+
+        if (intent) {
+          // Non-destructive actions run immediately (reminder, search, URL, app)
+          const safeTypes = ['CREATE_REMINDER', 'SEARCH_FILES', 'OPEN_URL', 'OPEN_APP', 'COMPOSE_EMAIL', 'SUMMARIZE_PDF']
+          const sensitiveTypes = ['ORGANIZE_FOLDER']
+
+          const runIntent = async () => {
+            const msgId = assistantMessage.id
+            await executeIntent(intent, settings, (cardState) => {
+              setActionCards(prev => ({ ...prev, [msgId]: cardState }))
+            })
+          }
+
+          if (sensitiveTypes.includes(intent.type)) {
+            // Ask permission before destructive folder operations
+            setPendingAction({
+              type: intent.type,
+              target: intent.folder || intent.path || '',
+              execute: runIntent,
+            })
+            setPermissionOpen(true)
+          } else {
+            // Run immediately for safe intents
+            runIntent()
+          }
+        } else if (actionTagMatch) {
+          // Legacy ACTION tag fallback
+          const actionType = actionTagMatch[1]
+          const actionArg = actionTagMatch[2].trim()
           
           setPendingAction({
             type: actionType,
@@ -408,7 +710,7 @@ export default function ChatPage() {
 
         // Automatic Memory Extraction & Personalization
         let extracted = []
-        if (ollamaStatus === 'online') {
+        if (settings?.autoExtractMemory && ollamaStatus === 'online') {
           try {
             // Background cognitive extraction via Ollama
             const extractPrompt = `Exchange:
@@ -437,7 +739,8 @@ Extract new user preferences, favorite apps, writing styles, or key personal fac
         
         // Fallback or additional heuristic check
         const lower = userContent.toLowerCase()
-        if (lower.includes('my name is')) {
+        if (settings?.autoExtractMemory) {
+          if (lower.includes('my name is')) {
           const match = userContent.match(/my name is\s+([A-Za-z0-9\s]+?)(?:\s+my|\s+i|\s+and|$)/i)
           if (match) extracted.push(`User's name: ${match[1].trim()}`)
         } else if (lower.includes('i am ')) {
@@ -457,6 +760,7 @@ Extract new user preferences, favorite apps, writing styles, or key personal fac
         if (lower.includes('writing style')) {
           const match = userContent.match(/writing style\s+(?:is\s+)?([A-Za-z0-9\s,-]+?)(?:\s+my|\s+i|\s+and|$)/i)
           if (match) extracted.push(`Writing style: ${match[1].trim()}`)
+        }
         }
         
         // Save extracted items
@@ -522,6 +826,10 @@ Extract new user preferences, favorite apps, writing styles, or key personal fac
     toast.success(t.savedMem)
   }
 
+  const toggleVoiceInput = () => {
+    setIsListening((prev) => !prev)
+  }
+
   return (
     <div className="chat-page">
       <div className="chat-messages" ref={chatMessagesRef}>
@@ -561,7 +869,12 @@ Extract new user preferences, favorite apps, writing styles, or key personal fac
           messages
             .filter((msg) => msg.role !== 'assistant' || msg.content)
             .map((message) => (
-              <Message key={message.id} msg={message} onCopy={handleCopy} onRegenerate={handleRegenerate} />
+              <Message
+                key={message.id}
+                msg={{ ...message, actionCard: actionCards[message.id] }}
+                onCopy={handleCopy}
+                onRegenerate={handleRegenerate}
+              />
             ))
         )}
         {isStreaming && (!messages.at(-1)?.content || messages.at(-1)?.role !== 'assistant') && (
@@ -604,26 +917,48 @@ Extract new user preferences, favorite apps, writing styles, or key personal fac
           <button className="input-action-btn" onClick={handleSaveMemory} title={t.saveToMemory}>
             <Brain size={14} />
           </button>
+          <button 
+            className={`input-action-btn ${isListening ? 'active-listening' : ''}`}
+            onClick={toggleVoiceInput}
+            title={isListening ? 'Stop Voice Input' : 'Voice Input (STT)'}
+            style={{
+              color: isListening ? 'var(--accent-light)' : 'var(--text-secondary)',
+              borderColor: isListening ? 'var(--accent)' : 'var(--border)',
+              background: isListening ? 'rgba(39, 199, 184, 0.08)' : 'transparent',
+            }}
+          >
+            {isListening ? <Mic size={14} className="animation-pulse" /> : <MicOff size={14} />}
+          </button>
           <textarea
             ref={textareaRef}
             className="chat-textarea"
-            placeholder={t.placeholder ? t.placeholder.replace('{name}', settings.assistantName) : `Message ${settings.assistantName}...`}
+            placeholder={isListening ? 'Listening...' : (t.placeholder ? t.placeholder.replace('{name}', settings.assistantName) : `Message ${settings.assistantName}...`)}
             value={input}
             onChange={(event) => {
               setInput(event.target.value)
               autoResize()
+              if (isSpeaking) {
+                stopSpeaking()
+                setIsSpeaking(false)
+              }
             }}
             onKeyDown={handleKey}
             rows={1}
           />
-          {isStreaming ? (
+          {(isStreaming || isSpeaking) ? (
             <button
               className="send-btn"
-              onClick={() => abortRef.current?.abort()}
+              onClick={() => {
+                if (isStreaming) abortRef.current?.abort()
+                if (isSpeaking) {
+                  stopSpeaking()
+                  setIsSpeaking(false)
+                }
+              }}
               title={t.stop}
               style={{ background: 'var(--danger)' }}
             >
-              <span style={{ width: 10, height: 10, background: '#fff', borderRadius: 2, display: 'block' }} />
+              {isSpeaking ? <VolumeX size={15} style={{ color: '#fff' }} /> : <span style={{ width: 10, height: 10, background: '#fff', borderRadius: 2, display: 'block' }} />}
             </button>
           ) : (
             <button

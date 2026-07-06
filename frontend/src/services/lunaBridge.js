@@ -12,6 +12,12 @@ export const defaultSettings = {
   inferenceMode: 'auto',
   onboardingComplete: false,
   voice: false,
+  voiceName: '',
+  wakeWord: false,
+  fontSize: 'medium',
+  aiPersonality: 'friendly',
+  responseLength: 'balanced',
+  autoExtractMemory: true,
   notifications: true,
   mockWhenOffline: true,
   theme: 'dark',
@@ -127,6 +133,7 @@ export function installLunaBridgeFallback() {
     openFileDialog: async () => [
       { name: 'sample.txt', path: '/mock/sample.txt', content: 'This is a sample local file loaded in web preview mode.' }
     ],
+    openFolderDialog: async () => '/mock/Downloads',
     readFile: async () => 'Sample content',
     saveFileDialog: async (name, content) => {
       const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })

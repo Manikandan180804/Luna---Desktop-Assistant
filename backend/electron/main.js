@@ -381,22 +381,55 @@ ipcMain.handle('file-search', async (_e, folderPath, query) => {
   }
 });
 
+// ── IPC: Folder dialog ────────────────────────────────────────────────────────
+ipcMain.handle('folder-open-dialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Select a Folder',
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+});
+
 ipcMain.handle('app-launch', async (_e, appName) => {
   const { exec } = require('child_process');
   return new Promise((resolve) => {
     const appMap = {
+      // Browsers
       chrome: 'start chrome',
+      firefox: 'start firefox',
+      edge: 'start msedge',
       browser: 'start chrome',
+      // Productivity
       notepad: 'notepad.exe',
+      wordpad: 'wordpad.exe',
       editor: 'notepad.exe',
+      word: 'start winword',
+      excel: 'start excel',
+      powerpoint: 'start powerpnt',
+      vscode: 'code .',
+      'visual studio code': 'code .',
+      // System
       calc: 'calc.exe',
       calculator: 'calc.exe',
       paint: 'mspaint.exe',
       explorer: 'explorer.exe',
+      'file explorer': 'explorer.exe',
       cmd: 'cmd.exe',
-      powershell: 'powershell.exe'
+      terminal: 'wt.exe',
+      powershell: 'powershell.exe',
+      'task manager': 'taskmgr.exe',
+      // Media
+      'media player': 'start wmplayer',
+      vlc: 'vlc',
+      // Communication
+      discord: 'start discord',
+      slack: 'start slack',
+      zoom: 'start zoom',
+      teams: 'start msteams',
     };
-    const command = appMap[appName.toLowerCase()] || appName;
+    const key = appName.toLowerCase().trim();
+    const command = appMap[key] || appName;
     exec(command, (error) => {
       if (error) {
         resolve({ success: false, error: error.message });

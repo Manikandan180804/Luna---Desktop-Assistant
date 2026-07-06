@@ -94,6 +94,38 @@
   --titlebar-title-color: linear-gradient(135deg, #09090b 0%, #27272a 100%);
   --welcome-header-color: linear-gradient(135deg, #09090b 20%, #6366f1 100%);
 }
+.font-small {
+  --text-xs: 10px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 16px;
+  --text-xl: 21px;
+}
+.font-small, .font-small body {
+  font-size: 12.5px;
+}
+
+.font-medium {
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+}
+.font-medium, .font-medium body {
+  font-size: 14px;
+}
+
+.font-large {
+  --text-xs: 12.5px;
+  --text-sm: 15px;
+  --text-md: 16.5px;
+  --text-lg: 21px;
+  --text-xl: 28px;
+}
+.font-large, .font-large body {
+  font-size: 16px;
+}
 
 html,
 body {
@@ -502,9 +534,9 @@ select option {
 }
 
 .suggestions {
-  width: min(640px, 100%);
+  width: min(680px, 100%);
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
   margin-top: 10px;
 }
@@ -2050,8 +2082,27 @@ select option {
   to { transform: rotate(360deg); }
 }
 
-.animation-spin {
+.animation-spin,
+.spin {
   animation: spin 1s linear infinite;
 }
 
+/* ── Action Card file row ─────────────────────────────────────────────────── */
+.file-row-item:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.theme-light .file-row-item:hover {
+  background: rgba(0, 0, 0, 0.04) !important;
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.15); opacity: 0.7; }
+}
+
+.animation-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
 

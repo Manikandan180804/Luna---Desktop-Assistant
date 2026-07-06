@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('luna', {
 
   // Files
   openFileDialog: () => ipcRenderer.invoke('file-open-dialog'),
+  openFolderDialog: () => ipcRenderer.invoke('folder-open-dialog'),
   readFile: (path) => ipcRenderer.invoke('file-read', path),
   saveFileDialog: (name, content) => ipcRenderer.invoke('file-save-dialog', name, content),
   renameFile: (oldPath, newPath) => ipcRenderer.invoke('file-rename', oldPath, newPath),

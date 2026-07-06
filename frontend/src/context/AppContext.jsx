@@ -68,6 +68,14 @@ export function AppProvider({ children }) {
     }
   }, [settings?.theme])
 
+  // Handle font size application (small, medium, large)
+  useEffect(() => {
+    if (!settings?.fontSize) return
+    const rootEl = document.documentElement
+    rootEl.classList.remove('font-small', 'font-medium', 'font-large')
+    rootEl.classList.add(`font-${settings.fontSize}`)
+  }, [settings?.fontSize])
+
   // Check Ollama status
   useEffect(() => {
     if (!settings) return

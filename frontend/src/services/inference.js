@@ -43,68 +43,78 @@ function mockResponse({ prompt, settings, memory, messages }) {
   const lower = prompt.toLowerCase()
   const name = settings.assistantName || 'Luna'
   const lang = settings.language || 'English'
+  const user = settings.userName || 'User'
   const memoryLine = memory?.length
-    ? (lang === 'Spanish' ? `\n\nTambién verifiqué tu memoria guardada y encontré ${memory.length} elemento(s) local(es).` :
-       lang === 'French' ? `\n\nJ'ai également vérifié votre mémoire et trouvé ${memory.length} élément(s) local(aux).` :
-       lang === 'German' ? `\n\nIch habe auch Ihren Speicher überprüft und ${memory.length} lokale(s) Element(e) gefunden.` :
-       `\n\nI also checked your saved memory and found ${memory.length} local item${memory.length === 1 ? '' : 's'} available for context.`)
+    ? `\n\nI also checked your saved memory and found ${memory.length} local item${memory.length === 1 ? '' : 's'} available for context.`
     : ''
 
   const hasImages = messages?.some(m => m.images && m.images.length > 0)
-  if (hasImages || lower.includes('image') || lower.includes('imagen') || lower.includes('bild')) {
-    return lang === 'Spanish' ? `[Respuesta Simulada] He recibido tu archivo de imagen adjunto. Conecta Ollama con un modelo de visión (como llama3.2-vision o llava) para realizar un análisis de imágenes real local.` :
-           lang === 'French' ? `[Réponse Simulée] J'ai bien reçu votre image en pièce jointe. Connectez Ollama avec un modèle de vision (comme llama3.2-vision ou llava) pour effectuer une analyse d'image locale réelle.` :
-           lang === 'German' ? `[Simulierte Antwort] Ich habe Ihr angehängtes Bild erhalten. Verbinden Sie Ollama mit einem Vision-Modell (wie llama3.2-vision oder llava), um eine echte lokale Bildanalyse durchzuführen.` :
-           `[Mock Response] I received your image attachment. Connect Ollama with a vision model (like llama3.2-vision or llava) to perform real local image analysis!`
+  if (hasImages || lower.includes('image') || lower.includes('photo')) {
+    return `[Mock Response] I received your image attachment. Connect Ollama with a vision model (like llama3.2-vision or llava) to perform real local image analysis!`
   }
 
-  // Intercept system integrations keywords
-  if (lower.includes('open') || lower.includes('launch') || lower.includes('start') || lower.includes('abrir') || lower.includes('ouvrir') || lower.includes('öffnen')) {
-    if (lower.includes('notepad') || lower.includes('editor')) {
-      return `I will launch Notepad for you.\n\n[ACTION: APP notepad]`
+  // ── Summarize PDF / file ──────────────────────────────────────────────────
+  if (lower.includes('summarize') || lower.includes('summary') || lower.includes('pdf') || lower.includes('read this') || lower.includes('what does this say')) {
+    const hasFile = messages?.some(m => m.content?.includes('[file:') || m.attachments?.length > 0)
+    if (!hasFile) {
+      return `📄 I can summarize a file for you! Please attach a PDF, .txt, .md, or .docx file using the 📎 attachment button, then ask me again.${memoryLine}`
     }
-    if (lower.includes('calc') || lower.includes('calculator') || lower.includes('calculadora')) {
-      return `I will launch the Calculator application.\n\n[ACTION: APP calc]`
-    }
-    if (lower.includes('paint')) {
-      return `I will launch MS Paint.\n\n[ACTION: APP paint]`
-    }
-    if (lower.includes('chrome') || lower.includes('browser') || lower.includes('navegador')) {
-      return `I will launch Google Chrome.\n\n[ACTION: APP chrome]`
-    }
-    if (lower.includes('google')) {
-      return `Opening Google Search in your default web browser.\n\n[ACTION: OPEN_URL https://google.com]`
-    }
-    if (lower.includes('youtube')) {
-      return `Opening YouTube in your default web browser.\n\n[ACTION: OPEN_URL https://youtube.com]`
-    }
-    if (lower.includes('wikipedia')) {
-      return `Opening Wikipedia in your default web browser.\n\n[ACTION: OPEN_URL https://wikipedia.org]`
-    }
-    if (lower.includes('spotify') || lower.includes('music')) {
-      return `Opening Spotify Web Player.\n\n[ACTION: OPEN_URL https://open.spotify.com]`
-    }
-    if (lower.includes('instagram')) {
-      return `Opening Instagram in your web browser.\n\n[ACTION: OPEN_URL https://instagram.com]`
-    }
+    return `📄 **File Summary (Mock)**\n\nHere are the key points I extracted from your document:\n\n- **Main topic**: The document covers core concepts and methodology in structured sections.\n- **Key takeaways**: Three primary recommendations were identified in the conclusion.\n- **Action items**: Follow-up tasks appear in sections 3 and 5.\n\n> Connect Ollama locally to get a full AI-powered summary of your file.${memoryLine}`
   }
 
-  if (lower.includes('email') || lower.includes('draft') || lower.includes('correo') || lower.includes('courriel') || lower.includes('mail') || lower.includes('entwurf')) {
-    let emailAddress = 'recipient@example.com'
+  // ── Create reminder ───────────────────────────────────────────────────────
+  if (lower.includes('remind') || lower.includes('reminder') || lower.includes('alarm') || lower.includes('alert me')) {
+    // Try to extract time info
+    const tomorrowMatch = lower.includes('tomorrow')
+    const timeMatch = prompt.match(/(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i)
+    const topicMatch = prompt.match(/remind(?:er)?\s+(?:me\s+)?(?:to\s+|about\s+)?(.+?)(?:\s+(?:at|tomorrow|today|on)|$)/i)
+
+    const topic = topicMatch?.[1]?.trim() || 'your task'
+    const time = timeMatch?.[1] || '09:00 AM'
+    const when = tomorrowMatch ? 'tomorrow' : 'at the specified time'
+
+    return `⏰ **Reminder Set!**\n\nI've scheduled a reminder for **"${topic}"** ${when}${timeMatch ? ` at **${time}**` : ''}.\n\nYou'll receive a desktop notification when it's time.\n\n[ACTION: REMINDER ${JSON.stringify({ title: topic, time: timeMatch?.[1] || '', tomorrow: tomorrowMatch })}]${memoryLine}`
+  }
+
+  // ── Find file / search ────────────────────────────────────────────────────
+  if (lower.includes('find') || lower.includes('search') || lower.includes('locate') || lower.includes('where is')) {
+    const fileTypes = ['resume', 'cv', 'report', 'document', 'photo', 'invoice', 'pdf']
+    const matchedType = fileTypes.find(t => lower.includes(t)) || 'file'
+    return `🔍 **File Search**\n\nI'll search your local folders for "${matchedType}".\n\n[ACTION: SEARCH_FILES ${matchedType}]\n\nThis will scan your Documents, Desktop, and Downloads folders for matching files.${memoryLine}`
+  }
+
+  // ── Organize Downloads / folder ───────────────────────────────────────────
+  if (lower.includes('organiz') || lower.includes('sort') || lower.includes('clean') || lower.includes('tidy')) {
+    const folder = lower.includes('download') ? 'Downloads'
+      : lower.includes('desktop') ? 'Desktop'
+      : lower.includes('document') ? 'Documents'
+      : 'Downloads'
+    return `📁 **Folder Organizer**\n\nI'll organize your **${folder}** folder by sorting files into categorized subfolders:\n\n- 📄 Documents (.pdf, .docx, .txt, .xlsx)\n- 🖼️ Images (.png, .jpg, .gif, .webp)\n- 🎵 Media (.mp3, .mp4, .mkv)\n- 📦 Archives (.zip, .rar)\n\n[ACTION: ORGANIZE_FOLDER ${folder}]\n\nShall I proceed?${memoryLine}`
+  }
+
+  // ── Open apps / URLs ──────────────────────────────────────────────────────
+  if (lower.includes('open') || lower.includes('launch') || lower.includes('start')) {
+    if (lower.includes('notepad') || lower.includes('editor')) return `Opening Notepad.\n\n[ACTION: APP notepad]`
+    if (lower.includes('calc')) return `Opening Calculator.\n\n[ACTION: APP calc]`
+    if (lower.includes('paint')) return `Opening MS Paint.\n\n[ACTION: APP paint]`
+    if (lower.includes('chrome') || lower.includes('browser')) return `Launching Chrome.\n\n[ACTION: APP chrome]`
+    if (lower.includes('spotify') || lower.includes('music')) return `Opening Spotify Web Player.\n\n[ACTION: OPEN_URL https://open.spotify.com]`
+    if (lower.includes('youtube')) return `Opening YouTube.\n\n[ACTION: OPEN_URL https://youtube.com]`
+    if (lower.includes('instagram')) return `Opening Instagram.\n\n[ACTION: OPEN_URL https://instagram.com]`
+    if (lower.includes('google')) return `Opening Google Search.\n\n[ACTION: OPEN_URL https://google.com]`
+    if (lower.includes('wikipedia')) return `Opening Wikipedia.\n\n[ACTION: OPEN_URL https://wikipedia.org]`
+  }
+
+  // ── Email ─────────────────────────────────────────────────────────────────
+  if (lower.includes('email') || lower.includes('mail') || lower.includes('draft')) {
     const emailMatch = prompt.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/)
-    if (emailMatch) emailAddress = emailMatch[1]
-    return `Opening mail client to compose email to ${emailAddress}.\n\n[ACTION: MAILTO mailto:${emailAddress}?subject=Luna%20Follow-up]`
+    const emailAddress = emailMatch?.[1] || 'recipient@example.com'
+    return `📧 Opening your email client to compose a message to **${emailAddress}**.\n\n[ACTION: MAILTO mailto:${emailAddress}?subject=Luna%20Follow-up]`
   }
 
+  // ── Task / Plan ───────────────────────────────────────────────────────────
   const dict = MOCK_RESPONSES[lang] || MOCK_RESPONSES.English
-
-  if (lower.includes('task') || lower.includes('plan') || lower.includes('tarea') || lower.includes('tâche') || lower.includes('aufgabe')) {
-    return dict.plan(name, memoryLine)
-  }
-
-  if (lower.includes('summarize') || lower.includes('[file:') || lower.includes('resum') || lower.includes('zusammen')) {
-    return dict.summary(memoryLine)
-  }
+  if (lower.includes('task') || lower.includes('plan') || lower.includes('todo')) return dict.plan(name, memoryLine)
 
   return dict.greeting(prompt.slice(0, 220) + (prompt.length > 220 ? '...' : ''), name, memoryLine)
 }
@@ -141,6 +151,23 @@ async function streamOllama({ settings, messages, memory, signal }, onToken) {
   const languageInstruction = settings.language && settings.language !== 'English'
     ? { role: 'system', content: `IMPORTANT: The user's preferred language is ${settings.language}. You MUST output your responses in ${settings.language}.` }
     : null
+
+  const responseLengthInstruction = settings.responseLength === 'concise'
+    ? { role: 'system', content: 'IMPORTANT: Your response must be extremely concise, direct, and limited to 1-3 sentences maximum.' }
+    : settings.responseLength === 'detailed'
+    ? { role: 'system', content: 'IMPORTANT: Your response must be highly detailed, thorough, and provide comprehensive explanations.' }
+    : null
+
+  const personalityInstruction = settings.aiPersonality === 'professional'
+    ? { role: 'system', content: 'IMPORTANT: Adopt a professional, formal, and analytical tone. Avoid slang or overly casual phrases.' }
+    : settings.aiPersonality === 'technical'
+    ? { role: 'system', content: 'IMPORTANT: Adopt a highly technical, precise, and engineering-focused tone. Provide code or configuration details when relevant.' }
+    : settings.aiPersonality === 'creative'
+    ? { role: 'system', content: 'IMPORTANT: Adopt a creative, enthusiastic, engaging, and expressive tone.' }
+    : settings.aiPersonality === 'friendly'
+    ? { role: 'system', content: 'IMPORTANT: Adopt a friendly, warm, helpful, and empathetic tone.' }
+    : null
+
   const systemMessages = [
     { role: 'system', content: settings.systemPrompt },
     { role: 'system', content: `You can perform desktop integrations. If the user asks to open a website, email someone, or launch an app, append a tag at the very end of your response:
@@ -150,6 +177,8 @@ async function streamOllama({ settings, messages, memory, signal }, onToken) {
 Ensure the tag is formatted precisely and appended at the absolute end of the message.` },
     memoryContext ? { role: 'system', content: memoryContext } : null,
     languageInstruction,
+    responseLengthInstruction,
+    personalityInstruction,
   ].filter(Boolean)
 
   const preferredModel = settings.model || 'qwen2:0.5b'
