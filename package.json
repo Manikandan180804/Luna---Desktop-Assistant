@@ -1,0 +1,71 @@
+{
+  "name": "luna-ai-assistant",
+  "version": "1.0.0",
+  "description": "Luna - a privacy-focused local AI desktop assistant prototype",
+  "private": true,
+  "main": "backend/electron/main.js",
+  "author": "Luna AI",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:start": "cross-env NODE_ENV=production electron .",
+    "electron:build": "npm run package:win",
+    "package:win": "npm run build && electron-builder build --win --publish never",
+    "package:mac": "npm run build && electron-builder build --mac --publish never",
+    "package:linux": "npm run build && electron-builder build --linux --publish never",
+    "package:all": "npm run build && electron-builder build --win --mac --linux --publish never"
+  },
+  "build": {
+    "appId": "com.luna.ai.assistant",
+    "productName": "Luna AI Assistant",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "backend/electron/**/*",
+      "frontend/public/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "public/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "public/icon.png"
+    }
+  },
+  "dependencies": {
+    "mammoth": "^1.12.0",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.6.3",
+    "react-syntax-highlighter": "^15.6.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.5.2",
+    "concurrently": "^9.2.0",
+    "cross-env": "^7.0.3",
+    "electron": "^36.4.0",
+    "electron-builder": "^26.0.12",
+    "framer-motion": "^12.18.1",
+    "lucide-react": "^0.513.0",
+    "vite": "^6.3.5",
+    "wait-on": "^8.0.3"
+  },
+  "allowScripts": {
+    "electron@36.9.5": true,
+    "esbuild@0.25.12": true
+  }
+}
