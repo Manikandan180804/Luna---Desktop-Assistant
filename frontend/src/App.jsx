@@ -39,7 +39,19 @@ function BrowserBlockedScreen() {
 }
 
 function AppInner() {
-  const { settings } = useApp()
+  const { settings, setSidebarOpen } = useApp()
+
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        setSidebarOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [setSidebarOpen])
+
   if (!settings) return null
   if (!settings.onboardingComplete) return <Onboarding />
   return (

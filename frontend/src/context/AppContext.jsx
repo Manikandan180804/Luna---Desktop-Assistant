@@ -15,9 +15,23 @@ export function AppProvider({ children }) {
   const [calendar, setCalendar] = useState([])
   const [ollamaStatus, setOllamaStatus] = useState('checking') // 'online' | 'offline' | 'checking'
   const [availableModels, setAvailableModels] = useState([])
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('luna.sidebarOpen')
+      return saved !== null ? JSON.parse(saved) : true
+    } catch {
+      return true
+    }
+  })
 
-  // Load everything on mount
+  // Persist sidebar state
+  useEffect(() => {
+    try {
+      localStorage.setItem('luna.sidebarOpen', JSON.stringify(sidebarOpen))
+    } catch (e) {
+      console.error(e)
+    }
+  }, [sidebarOpen])
   useEffect(() => {
     async function init() {
       const s = await window.luna.loadSettings()

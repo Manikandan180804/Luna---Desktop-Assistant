@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { MessageSquare, Brain, CheckSquare, FileText, Settings, Shield, ChevronLeft, ChevronRight, Plus, History, Cpu, Info, Plug } from 'lucide-react'
+import { MessageSquare, Brain, CheckSquare, FileText, Settings, Shield, ChevronLeft, ChevronRight, Plus, History, Cpu, Info, Plug, Menu } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 
 const NAV = [
@@ -53,14 +53,25 @@ export default function Sidebar() {
             <button className="btn btn-primary" style={{fontSize:12,padding:'6px 12px',flex:1}} onClick={handleNewChat}>
               <Plus size={13}/> {t.newChat}
             </button>
-            <button className="btn btn-icon btn-ghost" style={{marginLeft:6}} onClick={() => setSidebarOpen(false)}>
-              <ChevronLeft size={15}/>
+            <button
+              className="btn btn-icon btn-primary"
+              style={{ marginLeft: 6 }}
+              onClick={() => setSidebarOpen(false)}
+              title="Collapse Sidebar"
+            >
+              <Menu size={20}/>
             </button>
           </div>
         ) : (
           <div className="flex flex-col gap-2 items-center">
-            <button className="btn btn-icon btn-primary" onClick={handleNewChat} title={t.newChat}><Plus size={15}/></button>
-            <button className="btn btn-icon btn-ghost" onClick={() => setSidebarOpen(true)} title="Expand"><ChevronRight size={15}/></button>
+            <button className="btn btn-icon btn-primary" onClick={handleNewChat} title={t.newChat}><Plus size={18}/></button>
+            <button
+              className="btn btn-icon btn-primary"
+              onClick={() => setSidebarOpen(true)}
+              title="Expand Sidebar"
+            >
+              <Menu size={20}/>
+            </button>
           </div>
         )}
       </div>

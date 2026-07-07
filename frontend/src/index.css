@@ -1725,6 +1725,222 @@ select option {
   text-align: center;
 }
 
+/* ── Privacy Dashboard Premium Styles ────────────────────────────────────────── */
+.privacy-score-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(135deg, rgba(39, 199, 184, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
+  border: 1px solid rgba(39, 199, 184, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.privacy-score-circle {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.privacy-score-circle svg {
+  transform: rotate(-90deg);
+  width: 100%;
+  height: 100%;
+}
+
+.privacy-score-circle circle {
+  fill: none;
+  stroke-width: 8;
+}
+
+.privacy-score-circle .bg-circle {
+  stroke: rgba(255, 255, 255, 0.05);
+}
+
+.theme-light .privacy-score-circle .bg-circle {
+  stroke: rgba(0, 0, 0, 0.05);
+}
+
+.privacy-score-circle .fg-circle {
+  stroke: url(#privacy-grad);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.8s ease-in-out;
+}
+
+.privacy-score-value {
+  position: absolute;
+  font-family: 'Outfit', sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.privacy-score-status {
+  margin-top: 14px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.flow-map-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-top: 16px;
+  overflow-x: auto;
+  gap: 16px;
+}
+
+.flow-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 130px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.flow-node:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+}
+
+.flow-node-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flow-node.active .flow-node-icon {
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+
+.flow-connector {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-purple) 100%);
+  position: relative;
+  min-width: 40px;
+  opacity: 0.7;
+}
+
+.flow-connector::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  top: -4px;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid var(--accent-purple);
+}
+
+.flow-connector.active {
+  animation: flowPulse 2s linear infinite;
+  background-size: 200% 100%;
+}
+
+@keyframes flowPulse {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+
+.timeline-container {
+  position: relative;
+  padding-left: 20px;
+  margin-top: 16px;
+}
+
+.timeline-container::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--border);
+}
+
+.timeline-item {
+  position: relative;
+  padding-bottom: 16px;
+}
+
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-dot {
+  position: absolute;
+  left: -20px;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  border: 3px solid var(--accent);
+  z-index: 1;
+}
+
+.timeline-item.memory .timeline-dot {
+  border-color: var(--accent-purple);
+}
+
+.timeline-content {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  transition: all 0.2s ease;
+}
+
+.timeline-content:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.timeline-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.timeline-time {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.timeline-body {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 /* ── New Screens & Components Styles ────────────────────────────────────────── */
 
 /* Modal Overlay & Card */

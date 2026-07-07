@@ -32,7 +32,7 @@ export default function ConfirmDeleteModal({ open, modelName, title, desc, onCon
             Cancel
           </button>
           <button className="btn btn-danger" onClick={onConfirm}>
-            Remove
+            Delete
           </button>
         </div>
       </div>
