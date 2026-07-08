@@ -21,6 +21,8 @@ const TASKS_FILE = path.join(DATA_DIR, 'tasks.json');
 const CONTACTS_FILE = path.join(DATA_DIR, 'contacts.json');
 const CALENDAR_FILE = path.join(DATA_DIR, 'calendar.json');
 const NOTES_DIR = path.join(DATA_DIR, 'notes');
+const SMART_DEVICES_FILE = path.join(DATA_DIR, 'smart_devices.json');
+const IOT_LOGS_FILE = path.join(DATA_DIR, 'iot_logs.json');
 
 function ensureDirs() {
   [DATA_DIR, CONVERSATIONS_DIR, NOTES_DIR].forEach(d => {
@@ -48,6 +50,19 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: false,
     },
+  });
+
+  // Automatically approve media (microphone) permission requests
+  mainWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'media' || permission === 'audioCapture' || permission === 'videoCapture') {
+      callback(true);
+    } else {
+      callback(false);
+    }
+  });
+
+  mainWindow.webContents.session.setPermissionCheckHandler((webContents, permission) => {
+    return permission === 'media' || permission === 'audioCapture' || permission === 'videoCapture';
   });
 
   if (isDev) {
@@ -119,6 +134,12 @@ ipcMain.handle('settings-load', () => {
       clipboard: true,
       notifications: true,
       automation: false,
+    },
+    iot: {
+      homeAssistant: { enabled: false, url: 'http://localhost:8123', token: '' },
+      mqtt: { enabled: false, broker: 'mqtt://localhost:1883', topicPrefix: 'luna/home' },
+      philipsHue: { enabled: false, ip: '', username: '' },
+      homebridge: { enabled: false, url: '', token: '' }
     },
     systemPrompt: 'You are Luna, a helpful, friendly, and privacy-focused AI desktop assistant. You run entirely locally. Be concise, helpful, and warm.',
     accentColor: '#27c7b8',
@@ -249,6 +270,180 @@ ipcMain.handle('notes-delete', (_e, id) => {
   if (fs.existsSync(f)) fs.unlinkSync(f);
   return true;
 });
+
+// ── IPC: Smart Devices & IoT ──────────────────────────────────────────────────
+const DEFAULT_SMART_DEVICES_PATH = path.join(__dirname, 'default_smart_devices.json');
+
+function loadSmartDevices() {
+  try {
+    if (fs.existsSync(SMART_DEVICES_FILE)) {
+      return JSON.parse(fs.readFileSync(SMART_DEVICES_FILE, 'utf-8'));
+    }
+  } catch {}
+  try {
+    if (fs.existsSync(DEFAULT_SMART_DEVICES_PATH)) {
+      const defaults = JSON.parse(fs.readFileSync(DEFAULT_SMART_DEVICES_PATH, 'utf-8'));
+      fs.writeFileSync(SMART_DEVICES_FILE, JSON.stringify(defaults, null, 2));
+      return defaults;
+    }
+  } catch {}
+  return [];
+}
+
+function saveSmartDevices(devices) {
+  fs.writeFileSync(SMART_DEVICES_FILE, JSON.stringify(devices, null, 2));
+}
+
+function loadIotLogs() {
+  try {
+    if (fs.existsSync(IOT_LOGS_FILE)) {
+      return JSON.parse(fs.readFileSync(IOT_LOGS_FILE, 'utf-8'));
+    }
+  } catch {}
+  return [];
+}
+
+function saveIotLogs(logs) {
+  fs.writeFileSync(IOT_LOGS_FILE, JSON.stringify(logs, null, 2));
+}
+
+function addIotLog(type, message, details = '') {
+  const logs = loadIotLogs();
+  const entry = {
+    id: Date.now().toString() + '-' + Math.random().toString(36).substr(2, 4),
+    timestamp: new Date().toISOString(),
+    type,
+    message,
+    details
+  };
+  logs.unshift(entry);
+  saveIotLogs(logs.slice(0, 100)); // cap logs at 100 entries
+}
+
+ipcMain.handle('smart-devices-list', () => loadSmartDevices());
+ipcMain.handle('smart-devices-save', (_e, devices) => {
+  saveSmartDevices(devices);
+  return true;
+});
+
+ipcMain.handle('smart-device-control', async (_e, id, action, value) => {
+  const devices = loadSmartDevices();
+  const deviceIdx = devices.findIndex(d => d.id === id);
+  if (deviceIdx === -1) return { success: false, error: 'Device not found' };
+
+  const device = devices[deviceIdx];
+  const oldState = { ...device };
+
+  // Update local state
+  if (action === 'turn_on') {
+    device.state = device.type === 'speaker' ? 'playing' : (device.type === 'thermostat' ? 'heat' : 'on');
+    if (device.type === 'plug') device.powerWatts = 120 + Math.floor(Math.random() * 30);
+  } else if (action === 'turn_off') {
+    device.state = device.type === 'speaker' ? 'paused' : (device.type === 'thermostat' ? 'off' : 'off');
+    if (device.type === 'plug') device.powerWatts = 0;
+  } else if (action === 'set_value') {
+    if (device.type === 'light') {
+      device.brightness = value;
+      device.state = 'on';
+    } else if (device.type === 'speaker') {
+      device.volume = value;
+    } else if (device.type === 'thermostat') {
+      device.targetTemperature = value;
+    }
+  }
+
+  devices[deviceIdx] = device;
+  saveSmartDevices(devices);
+
+  // Add Log Entry
+  const actionLabel = action === 'turn_on' ? 'Turn On' : (action === 'turn_off' ? 'Turn Off' : `Set Value (${value})`);
+  addIotLog('CONTROL', `${device.name} (${device.room}): ${actionLabel}`, `Previous state: ${oldState.state || oldState.brightness || oldState.targetTemperature}. New state: ${device.state || device.brightness || device.targetTemperature}.`);
+
+  // Home Assistant REST Action Trigger
+  let haStatus = 'Not configured';
+  let mqttStatus = 'Not configured';
+
+  try {
+    const settings = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+    
+    // MQTT Simulation Logger
+    if (settings?.iot?.mqtt?.enabled) {
+      const topic = device.topic || `luna/home/${device.type}/${device.id}`;
+      const payload = action === 'turn_on' ? 'ON' : (action === 'turn_off' ? 'OFF' : value.toString());
+      addIotLog('MQTT_PUB', `Publish to ${topic}`, `Payload: ${payload}`);
+      mqttStatus = `Published to MQTT topic ${topic}`;
+    }
+
+    // Home Assistant Control REST Request
+    if (settings?.iot?.homeAssistant?.enabled && settings.iot.homeAssistant.url && settings.iot.homeAssistant.token) {
+      const haUrl = settings.iot.homeAssistant.url.replace(/\/$/, '');
+      const entityId = device.entityId;
+      let domain = 'homeassistant';
+      let service = action === 'turn_on' ? 'turn_on' : (action === 'turn_off' ? 'turn_off' : 'turn_on');
+      let serviceData = { entity_id: entityId };
+
+      if (device.type === 'light') {
+        domain = 'light';
+        if (action === 'set_value') {
+          service = 'turn_on';
+          serviceData.brightness = Math.round((value / 100) * 255);
+        }
+      } else if (device.type === 'plug') {
+        domain = 'switch';
+      } else if (device.type === 'thermostat') {
+        domain = 'climate';
+        if (action === 'set_value') {
+          service = 'set_temperature';
+          serviceData.temperature = value;
+        } else {
+          service = action === 'turn_on' ? 'set_hvac_mode' : 'set_hvac_mode';
+          serviceData.hvac_mode = action === 'turn_on' ? 'heat' : 'off';
+        }
+      } else if (device.type === 'speaker') {
+        domain = 'media_player';
+        if (action === 'set_value') {
+          service = 'volume_set';
+          serviceData.volume_level = value / 100;
+        } else {
+          service = action === 'turn_on' ? 'media_play' : 'media_pause';
+        }
+      }
+
+      const endpoint = `${haUrl}/api/services/${domain}/${service}`;
+      addIotLog('HA_API', `Request: POST ${endpoint}`, `Payload: ${JSON.stringify(serviceData)}`);
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${settings.iot.homeAssistant.token}`
+        },
+        body: JSON.stringify(serviceData),
+        signal: AbortSignal.timeout(4000)
+      });
+
+      if (response.ok) {
+        haStatus = 'API request succeeded';
+        addIotLog('HA_API', `Success: ${haStatus}`, `Status: ${response.status}`);
+      } else {
+        haStatus = `API request failed (status: ${response.status})`;
+        addIotLog('HA_API', `Error: ${haStatus}`, `Response: ${await response.text().catch(() => '')}`);
+      }
+    }
+  } catch (err) {
+    haStatus = `HA connection error: ${err.message}`;
+    addIotLog('HA_API', `Error: HA trigger exception`, err.message);
+  }
+
+  return { success: true, device, haStatus, mqttStatus };
+});
+
+ipcMain.handle('iot-logs-list', () => loadIotLogs());
+ipcMain.handle('iot-logs-clear', () => {
+  saveIotLogs([]);
+  return true;
+});
+
 
 // ── IPC: File operations ──────────────────────────────────────────────────────
 ipcMain.handle('file-open-dialog', async () => {
@@ -565,5 +760,26 @@ ipcMain.handle('app-version', () => app.getVersion());
 
 ipcMain.handle('app-check-updates', () => {
   return { available: false };
+});
+
+ipcMain.handle('speech-recognition-start', async () => {
+  return new Promise((resolve) => {
+    // Run PowerShell command to record and recognize a single utterance
+    const psCommand = `powershell -Command "Add-Type -AssemblyName System.Speech; $l = New-Object System.Speech.Recognition.SpeechRecognitionEngine; $l.SetInputToDefaultAudioDevice(); $g = New-Object System.Speech.Recognition.DictationGrammar; $l.LoadGrammar($g); $res = $l.Recognize(); if ($res -ne $null) { Write-Output $res.Text } else { Write-Output 'ERROR: no-speech' }"`;
+    
+    require('child_process').exec(psCommand, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Local speech recognition error:', error);
+        resolve({ success: false, error: error.message });
+        return;
+      }
+      const text = stdout.trim();
+      if (text === 'ERROR: no-speech' || !text) {
+        resolve({ success: false, error: 'No speech detected' });
+      } else {
+        resolve({ success: true, text });
+      }
+    });
+  });
 });
 

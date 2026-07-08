@@ -66,6 +66,7 @@ export function installLunaBridgeFallback() {
 
   window.luna = {
     isFallback: true,
+    isElectron: false,
     minimize: () => {},
     maximize: () => {},
     close: () => {},
@@ -184,6 +185,112 @@ export function installLunaBridgeFallback() {
       return true
     },
 
+    // Smart Home fallbacks
+    listSmartDevices: async () => read('luna.smartDevices', [
+      {
+        id: 'light-living-room',
+        name: 'Living Room Lamp',
+        type: 'light',
+        room: 'Living Room',
+        state: 'off',
+        brightness: 80,
+        integration: 'mock',
+        entityId: 'light.living_room_lamp',
+        topic: 'luna/home/light/living_room'
+      },
+      {
+        id: 'plug-coffee-maker',
+        name: 'Coffee Maker',
+        type: 'plug',
+        room: 'Kitchen',
+        state: 'off',
+        powerWatts: 0,
+        integration: 'mock',
+        entityId: 'switch.coffee_maker',
+        topic: 'luna/home/plug/coffee_maker'
+      },
+      {
+        id: 'thermostat-hallway',
+        name: 'Hallway Climate',
+        type: 'thermostat',
+        room: 'Hallway',
+        state: 'cool',
+        temperature: 72,
+        targetTemperature: 70,
+        integration: 'mock',
+        entityId: 'climate.hallway_thermostat',
+        topic: 'luna/home/thermostat/hallway'
+      },
+      {
+        id: 'speaker-studio',
+        name: 'Studio Speakers',
+        type: 'speaker',
+        room: 'Studio',
+        state: 'paused',
+        volume: 50,
+        track: 'Ambient Focus Beats',
+        integration: 'mock',
+        entityId: 'media_player.studio_speaker',
+        topic: 'luna/home/speaker/studio'
+      }
+    ]),
+    saveSmartDevices: async (devices) => {
+      write('luna.smartDevices', devices)
+      return true
+    },
+    controlSmartDevice: async (id, action, value) => {
+      const defaultDevices = [
+        { id: 'light-living-room', name: 'Living Room Lamp', type: 'light', room: 'Living Room', state: 'off', brightness: 80, integration: 'mock', entityId: 'light.living_room_lamp', topic: 'luna/home/light/living_room' },
+        { id: 'plug-coffee-maker', name: 'Coffee Maker', type: 'plug', room: 'Kitchen', state: 'off', powerWatts: 0, integration: 'mock', entityId: 'switch.coffee_maker', topic: 'luna/home/plug/coffee_maker' },
+        { id: 'thermostat-hallway', name: 'Hallway Climate', type: 'thermostat', room: 'Hallway', state: 'cool', temperature: 72, targetTemperature: 70, integration: 'mock', entityId: 'climate.hallway_thermostat', topic: 'luna/home/thermostat/hallway' },
+        { id: 'speaker-studio', name: 'Studio Speakers', type: 'speaker', room: 'Studio', state: 'paused', volume: 50, track: 'Ambient Focus Beats', integration: 'mock', entityId: 'media_player.studio_speaker', topic: 'luna/home/speaker/studio' }
+      ]
+      const devices = read('luna.smartDevices', defaultDevices)
+      const deviceIdx = devices.findIndex(d => d.id === id)
+      if (deviceIdx === -1) return { success: false, error: 'Device not found' }
+      const device = devices[deviceIdx]
+      const oldState = { ...device }
+
+      if (action === 'turn_on') {
+        device.state = device.type === 'speaker' ? 'playing' : (device.type === 'thermostat' ? 'heat' : 'on')
+        if (device.type === 'plug') device.powerWatts = 135
+      } else if (action === 'turn_off') {
+        device.state = device.type === 'speaker' ? 'paused' : (device.type === 'thermostat' ? 'off' : 'off')
+        if (device.type === 'plug') device.powerWatts = 0
+      } else if (action === 'set_value') {
+        if (device.type === 'light') {
+          device.brightness = value
+          device.state = 'on'
+        } else if (device.type === 'speaker') {
+          device.volume = value
+        } else if (device.type === 'thermostat') {
+          device.targetTemperature = value
+        }
+      }
+      devices[deviceIdx] = device
+      write('luna.smartDevices', devices)
+
+      // Add IoT Log fallback
+      const logs = read('luna.iotLogs', [])
+      const actionLabel = action === 'turn_on' ? 'Turn On' : (action === 'turn_off' ? 'Turn Off' : `Set Value (${value})`)
+      const newLog = {
+        id: `${Date.now()}-${Math.random()}`,
+        timestamp: new Date().toISOString(),
+        type: 'CONTROL',
+        message: `${device.name} (${device.room}): ${actionLabel} (Simulated)`,
+        details: `Previous state: ${oldState.state || oldState.brightness || oldState.targetTemperature}. New state: ${device.state || device.brightness || device.targetTemperature}.`
+      }
+      logs.unshift(newLog)
+      write('luna.iotLogs', logs.slice(0, 100))
+
+      return { success: true, device, haStatus: 'Mocked', mqttStatus: 'Mocked' }
+    },
+    listIotLogs: async () => read('luna.iotLogs', []),
+    clearIotLogs: async () => {
+      write('luna.iotLogs', [])
+      return true
+    },
+
     // Browser fallbacks
     openExternal: async (url) => {
       window.open(url, '_blank')
@@ -215,5 +322,6 @@ export function installLunaBridgeFallback() {
     },
     cancelPullModel: async (_name) => true,
     deleteModel: async (_name) => true,
+    startLocalSpeechRecognition: async () => ({ success: false, error: 'Not supported in browser' }),
   }
 }

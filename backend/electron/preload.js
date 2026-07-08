@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('luna', {
+  isElectron: true,
   // Window controls
   minimize: () => ipcRenderer.send('window-minimize'),
   maximize: () => ipcRenderer.send('window-maximize'),
@@ -59,6 +60,13 @@ contextBridge.exposeInMainWorld('luna', {
   listCalendar: () => ipcRenderer.invoke('calendar-list'),
   saveCalendar: (calendar) => ipcRenderer.invoke('calendar-save', calendar),
 
+  // Smart Home
+  listSmartDevices: () => ipcRenderer.invoke('smart-devices-list'),
+  saveSmartDevices: (devices) => ipcRenderer.invoke('smart-devices-save', devices),
+  controlSmartDevice: (id, action, value) => ipcRenderer.invoke('smart-device-control', id, action, value),
+  listIotLogs: () => ipcRenderer.invoke('iot-logs-list'),
+  clearIotLogs: () => ipcRenderer.invoke('iot-logs-clear'),
+
   // Shell
   shellOpen: (target) => ipcRenderer.invoke('shell-open', target),
   openExternal: (url) => ipcRenderer.invoke('shell-open-external', url),
@@ -81,6 +89,7 @@ contextBridge.exposeInMainWorld('luna', {
   // App version & updates
   getAppVersion: () => ipcRenderer.invoke('app-version'),
   checkForUpdates: () => ipcRenderer.invoke('app-check-updates'),
+  startLocalSpeechRecognition: () => ipcRenderer.invoke('speech-recognition-start'),
 
   // Listeners
   onWindowStateChanged: (callback) => {

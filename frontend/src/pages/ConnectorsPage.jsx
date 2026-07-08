@@ -2,15 +2,19 @@ import React, { useState, useMemo, useRef, useEffect } from 'react'
 import {
   Users, Calendar, Music, Command, Mail, Globe, Plus, Search, Trash2, Phone,
   User, Briefcase, FileText, Edit2, X, Check, Clock, MapPin, Tag, Play, Pause,
-  SkipForward, Volume2, ListMusic, ExternalLink, Sparkles
+  SkipForward, Volume2, ListMusic, ExternalLink, Sparkles, Home, Lightbulb,
+  Power, Cpu, Radio, Sliders, Activity, Database
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { toast } from '../components/Toast'
 import PermissionModal from '../components/PermissionModal'
 
 export default function ConnectorsPage() {
-  const { contacts, saveContacts, calendar, saveCalendar, settings } = useApp()
-  const [activeTab, setActiveTab] = useState('apps') // 'apps' | 'contacts' | 'calendar' | 'music'
+  const {
+    contacts, saveContacts, calendar, saveCalendar, settings, saveSettings,
+    smartDevices, saveSmartDevices, controlSmartDevice, iotLogs, refreshIotLogs, clearIotLogs
+  } = useApp()
+  const [activeTab, setActiveTab] = useState('apps') // 'apps' | 'contacts' | 'calendar' | 'music' | 'smarthome'
 
   const [permissionOpen, setPermissionOpen] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
@@ -45,6 +49,118 @@ export default function ConnectorsPage() {
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(0.8)
+
+  // --- SMART HOME STATE ---
+  const [isAddingDevice, setIsAddingDevice] = useState(false)
+  const [haOpen, setHaOpen] = useState(false)
+  const [mqttOpen, setMqttOpen] = useState(false)
+  
+  // Settings values initialized with fallback
+  const [haEnabled, setHaEnabled] = useState(settings?.iot?.homeAssistant?.enabled || false)
+  const [haUrl, setHaUrl] = useState(settings?.iot?.homeAssistant?.url || 'http://localhost:8123')
+  const [haToken, setHaToken] = useState(settings?.iot?.homeAssistant?.token || '')
+
+  const [mqttEnabled, setMqttEnabled] = useState(settings?.iot?.mqtt?.enabled || false)
+  const [mqttBroker, setMqttBroker] = useState(settings?.iot?.mqtt?.broker || 'mqtt://localhost:1883')
+  const [mqttPrefix, setMqttPrefix] = useState(settings?.iot?.mqtt?.topicPrefix || 'luna/home')
+
+  const [devName, setDevName] = useState('')
+  const [devType, setDevType] = useState('light')
+  const [devRoom, setDevRoom] = useState('Living Room')
+  const [devIntegration, setDevIntegration] = useState('mock')
+  const [devEntityId, setDevEntityId] = useState('')
+  const [devTopic, setDevTopic] = useState('')
+
+  const handleSaveIotSettings = async () => {
+    const nextIot = {
+      homeAssistant: { enabled: haEnabled, url: haUrl.trim(), token: haToken.trim() },
+      mqtt: { enabled: mqttEnabled, broker: mqttBroker.trim(), topicPrefix: mqttPrefix.trim() },
+      philipsHue: settings?.iot?.philipsHue || { enabled: false, ip: '', username: '' },
+      homebridge: settings?.iot?.homebridge || { enabled: false, url: '', token: '' }
+    }
+    await saveSettings({ iot: nextIot })
+    toast.success('IoT Platform configurations saved')
+  }
+
+  const handleTestHaConnection = async () => {
+    if (!haUrl.trim()) {
+      toast.error('Home Assistant URL is required')
+      return
+    }
+    toast.info('Testing Home Assistant connection...')
+    try {
+      const res = await fetch(`${haUrl.trim()}/api/`, {
+        headers: {
+          'Authorization': `Bearer ${haToken.trim()}`
+        },
+        signal: AbortSignal.timeout(4000)
+      })
+      if (res.ok) {
+        toast.success('Connected to Home Assistant successfully!')
+      } else {
+        toast.error(`HA Server returned status ${res.status}`)
+      }
+    } catch (err) {
+      toast.error(`Home Assistant connection failed: ${err.message}`)
+    }
+  }
+
+  const handleAddDevice = async (e) => {
+    e.preventDefault()
+    if (!devName.trim()) {
+      toast.error('Device name is required')
+      return
+    }
+    const newDevice = {
+      id: `${devType}-${Date.now()}`,
+      name: devName.trim(),
+      type: devType,
+      room: devRoom,
+      integration: devIntegration,
+      entityId: devEntityId.trim() || undefined,
+      topic: devTopic.trim() || undefined,
+      state: devType === 'speaker' ? 'paused' : (devType === 'thermostat' ? 'cool' : 'off')
+    }
+    if (devType === 'light') {
+      newDevice.brightness = 80
+    } else if (devType === 'thermostat') {
+      newDevice.temperature = 72
+      newDevice.targetTemperature = 70
+    } else if (devType === 'speaker') {
+      newDevice.volume = 50
+      newDevice.track = 'Simulated Stream'
+    } else if (devType === 'plug') {
+      newDevice.powerWatts = 0
+    }
+
+    const updatedDevices = [...smartDevices, newDevice]
+    await saveSmartDevices(updatedDevices)
+    toast.success(`${devName} added successfully`)
+
+    // Reset device form
+    setDevName('')
+    setDevType('light')
+    setDevRoom('Living Room')
+    setDevIntegration('mock')
+    setDevEntityId('')
+    setDevTopic('')
+    setIsAddingDevice(false)
+  }
+
+  const handleDeleteDevice = async (id, name) => {
+    const updated = smartDevices.filter(d => d.id !== id)
+    await saveSmartDevices(updated)
+    toast.success(`Removed ${name}`)
+  }
+
+  const toggleDevicePower = async (device) => {
+    const action = (device.state === 'on' || device.state === 'playing' || device.state === 'heat') ? 'turn_off' : 'turn_on'
+    await controlSmartDevice(device.id, action)
+  }
+
+  const setDeviceSliderValue = async (device, val) => {
+    await controlSmartDevice(device.id, 'set_value', val)
+  }
 
   const audioRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -311,6 +427,9 @@ export default function ConnectorsPage() {
         </button>
         <button className={`tab ${activeTab === 'music' ? 'active' : ''}`} onClick={() => setActiveTab('music')}>
           <Music size={14} style={{ marginRight: 6 }} /> Music Player
+        </button>
+        <button className={`tab ${activeTab === 'smarthome' ? 'active' : ''}`} onClick={() => setActiveTab('smarthome')}>
+          <Home size={14} style={{ marginRight: 6 }} /> Smart Home
         </button>
       </div>
 
@@ -755,6 +874,429 @@ export default function ConnectorsPage() {
                   <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{track.artist}</div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB CONTENT: SMART HOME / IoT */}
+      {activeTab === 'smarthome' && (
+        <div className="flex flex-col gap-6 fade-in" style={{ marginTop: 20 }}>
+          {/* Platforms Integrations Config Card */}
+          <div className="card">
+            <div className="settings-section-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Cpu size={16} /> IoT Platform Integrations
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 14 }}>
+              Enable and configure local REST or broker links. Luna communicates directly over your local network.
+            </p>
+
+            <div className="flex flex-col gap-4">
+              {/* Home Assistant Config */}
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                <div 
+                  onClick={() => setHaOpen(!haOpen)}
+                  style={{ 
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                    padding: '12px 16px', background: 'rgba(255,255,255,0.01)', cursor: 'pointer' 
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: haEnabled ? 'var(--primary)' : 'var(--text-muted)' }} />
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>Home Assistant REST API</span>
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--primary)' }}>{haOpen ? 'Collapse ▲' : 'Configure ▼'}</span>
+                </div>
+
+                {haOpen && (
+                  <div style={{ padding: 16, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="checkbox" 
+                        id="ha-enabled-checkbox" 
+                        checked={haEnabled} 
+                        onChange={(e) => setHaEnabled(e.target.checked)} 
+                        style={{ width: 16, height: 16, accentColor: 'var(--primary)' }}
+                      />
+                      <label htmlFor="ha-enabled-checkbox" style={{ fontSize: 13, fontWeight: 500 }}>Enable Home Assistant Integration</label>
+                    </div>
+
+                    <div className="grid-2" style={{ gap: 12 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Server URL</label>
+                        <input 
+                          className="input-field" 
+                          placeholder="http://192.168.1.50:8123" 
+                          value={haUrl} 
+                          onChange={(e) => setHaUrl(e.target.value)}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Long-Lived Access Token</label>
+                        <input 
+                          type="password" 
+                          className="input-field" 
+                          placeholder="ey..." 
+                          value={haToken} 
+                          onChange={(e) => setHaToken(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 justify-end" style={{ marginTop: 6 }}>
+                      <button type="button" className="btn btn-secondary" onClick={handleTestHaConnection}>Test Connection</button>
+                      <button type="button" className="btn btn-primary" onClick={handleSaveIotSettings}>Save HA Settings</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* MQTT Broker Config */}
+              <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                <div 
+                  onClick={() => setMqttOpen(!mqttOpen)}
+                  style={{ 
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                    padding: '12px 16px', background: 'rgba(255,255,255,0.01)', cursor: 'pointer' 
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: mqttEnabled ? 'var(--primary)' : 'var(--text-muted)' }} />
+                    <span style={{ fontWeight: 600, fontSize: 14 }}>MQTT Message Broker</span>
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--primary)' }}>{mqttOpen ? 'Collapse ▲' : 'Configure ▼'}</span>
+                </div>
+
+                {mqttOpen && (
+                  <div style={{ padding: 16, borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="checkbox" 
+                        id="mqtt-enabled-checkbox" 
+                        checked={mqttEnabled} 
+                        onChange={(e) => setMqttEnabled(e.target.checked)} 
+                        style={{ width: 16, height: 16, accentColor: 'var(--primary)' }}
+                      />
+                      <label htmlFor="mqtt-enabled-checkbox" style={{ fontSize: 13, fontWeight: 500 }}>Enable MQTT Brokering</label>
+                    </div>
+
+                    <div className="grid-2" style={{ gap: 12 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Broker Host (tcp/ws)</label>
+                        <input 
+                          className="input-field" 
+                          placeholder="mqtt://localhost:1883" 
+                          value={mqttBroker} 
+                          onChange={(e) => setMqttBroker(e.target.value)}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Base Topic Prefix</label>
+                        <input 
+                          className="input-field" 
+                          placeholder="luna/home" 
+                          value={mqttPrefix} 
+                          onChange={(e) => setMqttPrefix(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 justify-end" style={{ marginTop: 6 }}>
+                      <button type="button" className="btn btn-primary" onClick={handleSaveIotSettings}>Save MQTT Settings</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Smart Devices Grid Board */}
+          <div>
+            <div className="flex justify-between items-center" style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Lightbulb size={18} style={{ color: 'var(--primary)' }} />
+                <h3 style={{ margin: 0 }}>Smart Device Panel</h3>
+              </div>
+              <button className="btn btn-primary" onClick={() => setIsAddingDevice(true)}>
+                <Plus size={14} /> Add Device
+              </button>
+            </div>
+
+            {isAddingDevice && (
+              <form onSubmit={handleAddDevice} className="card" style={{ maxWidth: 600, margin: '0 auto 20px auto', border: '1px solid var(--primary)' }}>
+                <div className="settings-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Configure New Smart Device</span>
+                  <button type="button" className="btn btn-icon btn-ghost" onClick={() => setIsAddingDevice(false)}>
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-4" style={{ marginTop: 12 }}>
+                  <div className="grid-2" style={{ gap: 12 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ fontSize: 12, fontWeight: 500 }}>Device Name *</label>
+                      <input 
+                        className="input-field" 
+                        placeholder="e.g. Kitchen Light" 
+                        value={devName} 
+                        onChange={(e) => setDevName(e.target.value)} 
+                        required 
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ fontSize: 12, fontWeight: 500 }}>Room Location</label>
+                      <input 
+                        className="input-field" 
+                        placeholder="e.g. Kitchen" 
+                        value={devRoom} 
+                        onChange={(e) => setDevRoom(e.target.value)} 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid-3" style={{ gap: 12 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ fontSize: 12, fontWeight: 500 }}>Device Type</label>
+                      <select 
+                        className="input-field" 
+                        value={devType} 
+                        onChange={(e) => setDevType(e.target.value)}
+                        style={{ background: 'var(--card-bg)' }}
+                      >
+                        <option value="light">Smart Light</option>
+                        <option value="plug">Smart Plug</option>
+                        <option value="thermostat">Smart Thermostat</option>
+                        <option value="speaker">Smart Speaker</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ fontSize: 12, fontWeight: 500 }}>Integration Source</label>
+                      <select 
+                        className="input-field" 
+                        value={devIntegration} 
+                        onChange={(e) => setDevIntegration(e.target.value)}
+                        style={{ background: 'var(--card-bg)' }}
+                      >
+                        <option value="mock">Simulated (Mock)</option>
+                        <option value="ha">Home Assistant Entity</option>
+                        <option value="mqtt">MQTT Client</option>
+                      </select>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label style={{ fontSize: 12, fontWeight: 500 }}>Binding Identifier</label>
+                      <input 
+                        className="input-field" 
+                        placeholder={devIntegration === 'ha' ? 'light.kitchen_lamp' : (devIntegration === 'mqtt' ? 'luna/home/light/kitchen' : 'N/A (Mock)')} 
+                        value={devIntegration === 'ha' ? devEntityId : devTopic}
+                        onChange={(e) => {
+                          if (devIntegration === 'ha') {
+                            setDevEntityId(e.target.value)
+                          } else {
+                            setDevTopic(e.target.value)
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 justify-end" style={{ marginTop: 8 }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setIsAddingDevice(false)}>Cancel</button>
+                    <button type="submit" className="btn btn-primary">Save Device</button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {smartDevices.length === 0 ? (
+              <div className="empty-state">No configured smart devices. Add one to get started!</div>
+            ) : (
+              <div className="grid-2" style={{ gap: 16 }}>
+                {smartDevices.map(device => {
+                  const isPowerOn = device.state === 'on' || device.state === 'playing' || device.state === 'heat';
+                  
+                  return (
+                    <div 
+                      key={device.id} 
+                      className="card" 
+                      style={{ 
+                        padding: 16, 
+                        border: isPowerOn ? '1px solid var(--primary-glow)' : '1px solid var(--border)',
+                        background: isPowerOn ? 'rgba(39, 199, 184, 0.02)' : 'rgba(255,255,255,0.01)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'space-between',
+                        gap: 12
+                      }}
+                    >
+                      {/* Device Header */}
+                      <div className="flex justify-between items-start">
+                        <div className="flex gap-3 items-center">
+                          <div 
+                            style={{ 
+                              width: 36, height: 36, borderRadius: '50%',
+                              background: isPowerOn ? 'var(--primary-glow)' : 'rgba(255,255,255,0.05)',
+                              color: isPowerOn ? 'var(--primary)' : 'var(--text-secondary)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}
+                          >
+                            {device.type === 'light' ? <Lightbulb size={18} /> : 
+                             device.type === 'plug' ? <Power size={18} /> : 
+                             device.type === 'thermostat' ? <Sliders size={18} /> : 
+                             <Volume2 size={18} />}
+                          </div>
+                          <div>
+                            <div style={{ fontWeight: 650, fontSize: 14 }}>{device.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{device.room} • {device.integration.toUpperCase()}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-1 items-center">
+                          <button 
+                            type="button"
+                            className="btn btn-icon btn-ghost" 
+                            onClick={() => toggleDevicePower(device)}
+                            title={isPowerOn ? 'Power Off' : 'Power On'}
+                            style={{ color: isPowerOn ? 'var(--accent)' : 'var(--text-muted)' }}
+                          >
+                            <Power size={14} />
+                          </button>
+                          <button 
+                            type="button"
+                            className="btn btn-icon btn-ghost" 
+                            onClick={() => handleDeleteDevice(device.id, device.name)}
+                            title="Remove Device"
+                          >
+                            <Trash2 size={13} color="var(--danger)" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Device Controls Body */}
+                      <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, fontSize: 12 }}>
+                        {device.type === 'light' && (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex justify-between items-center" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                              <span>Brightness</span>
+                              <span style={{ fontWeight: 600 }}>{isPowerOn ? `${device.brightness || 0}%` : 'Off'}</span>
+                            </div>
+                            <input 
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={device.brightness || 0}
+                              onChange={(e) => setDeviceSliderValue(device, parseInt(e.target.value))}
+                              disabled={!isPowerOn}
+                              style={{ width: '100%', accentColor: 'var(--primary)', height: 3, cursor: isPowerOn ? 'pointer' : 'not-allowed' }}
+                            />
+                          </div>
+                        )}
+
+                        {device.type === 'plug' && (
+                          <div className="flex justify-between items-center">
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Current Draw</span>
+                            <span style={{ fontWeight: 600, color: isPowerOn ? 'var(--accent)' : 'var(--text-muted)' }}>
+                              {isPowerOn ? `${device.powerWatts || 120} W` : '0 W'}
+                            </span>
+                          </div>
+                        )}
+
+                        {device.type === 'thermostat' && (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex justify-between items-center">
+                              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Current Temp / Target</span>
+                              <span style={{ fontWeight: 600 }}>{device.temperature || 72}°F &rarr; <span style={{ color: 'var(--primary)' }}>{device.targetTemperature || 70}°F</span></span>
+                            </div>
+                            <div className="flex gap-2 justify-end" style={{ marginTop: 2 }}>
+                              <button 
+                                type="button"
+                                className="btn btn-secondary" 
+                                style={{ padding: '2px 8px', fontSize: 11 }}
+                                onClick={() => setDeviceSliderValue(device, (device.targetTemperature || 70) - 1)}
+                              >
+                                -1°
+                              </button>
+                              <button 
+                                type="button"
+                                className="btn btn-secondary" 
+                                style={{ padding: '2px 8px', fontSize: 11 }}
+                                onClick={() => setDeviceSliderValue(device, (device.targetTemperature || 70) + 1)}
+                              >
+                                +1°
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {device.type === 'speaker' && (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex justify-between items-center" style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+                                {isPowerOn ? `Playing: ${device.track || 'Audio Stream'}` : 'Idle'}
+                              </span>
+                              <span style={{ fontWeight: 600 }}>Vol: {device.volume || 50}%</span>
+                            </div>
+                            <input 
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={device.volume || 0}
+                              onChange={(e) => setDeviceSliderValue(device, parseInt(e.target.value))}
+                              disabled={!isPowerOn}
+                              style={{ width: '100%', accentColor: 'var(--primary)', height: 3, cursor: isPowerOn ? 'pointer' : 'not-allowed' }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* IoT Logs/Terminal console */}
+          <div className="card">
+            <div className="flex justify-between items-center" style={{ marginBottom: 12 }}>
+              <div className="settings-section-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Activity size={16} /> Live IoT Logs Broker Console
+              </div>
+              <div className="flex gap-2">
+                <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11 }} onClick={refreshIotLogs}>
+                  Refresh Logs
+                </button>
+                <button type="button" className="btn btn-secondary" style={{ padding: '4px 10px', fontSize: 11 }} onClick={clearIotLogs}>
+                  Clear Console
+                </button>
+              </div>
+            </div>
+
+            <div 
+              style={{ 
+                height: 180, overflowY: 'auto', background: '#07080d', border: '1px solid var(--border)',
+                borderRadius: 8, padding: 12, fontFamily: 'monospace', fontSize: 11, color: '#3cd070' 
+              }}
+            >
+              {iotLogs.length === 0 ? (
+                <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>Console idle. Awaiting smart device packets...</div>
+              ) : (
+                iotLogs.map(log => {
+                  let badgeColor = '#94a3b8'; // gray
+                  if (log.type === 'MQTT_PUB') badgeColor = '#38bdf8'; // blue
+                  if (log.type === 'HA_API') badgeColor = '#a855f7'; // purple
+                  if (log.type === 'CONTROL') badgeColor = '#3cd070'; // green
+
+                  return (
+                    <div key={log.id} style={{ marginBottom: 6, borderBottom: '1px solid rgba(255,255,255,0.02)', paddingBottom: 4 }}>
+                      <div className="flex justify-between" style={{ color: '#64748b', marginBottom: 2 }}>
+                        <span>{new Date(log.timestamp).toLocaleTimeString()}</span>
+                        <span style={{ color: badgeColor, fontWeight: 700 }}>[{log.type}]</span>
+                      </div>
+                      <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{log.message}</div>
+                      {log.details && <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 1 }}>{log.details}</div>}
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>

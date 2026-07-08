@@ -288,5 +288,75 @@ export function parseIntent(prompt) {
     return { type: 'COMPOSE_EMAIL', to: emailMatch?.[1] || '' }
   }
 
+  // ── Smart Device Control ──────────────────────────────────────────────────
+  if (
+    lower.includes('turn on') ||
+    lower.includes('turn off') ||
+    lower.includes('switch on') ||
+    lower.includes('switch off') ||
+    lower.includes('toggle') ||
+    lower.includes('dim ') ||
+    lower.includes('set temperature') ||
+    lower.includes('set thermostat') ||
+    lower.includes('adjust temperature') ||
+    lower.includes('adjust thermostat') ||
+    lower.includes('set the temperature') ||
+    lower.includes('set the thermostat') ||
+    lower.includes('play music') ||
+    lower.includes('pause music') ||
+    lower.includes('set volume') ||
+    (lower.includes('light') && (lower.includes('on') || lower.includes('off') || lower.includes('brightness'))) ||
+    (lower.includes('plug') && (lower.includes('on') || lower.includes('off'))) ||
+    (lower.includes('thermostat') && (lower.includes('set') || lower.includes('temperature') || lower.includes('degrees'))) ||
+    (lower.includes('speaker') && (lower.includes('volume') || lower.includes('mute') || lower.includes('play') || lower.includes('pause')))
+  ) {
+    let action = 'turn_on'
+    if (lower.includes('turn off') || lower.includes('switch off') || lower.includes('pause')) {
+      action = 'turn_off'
+    } else if (lower.includes('set') || lower.includes('dim') || lower.includes('adjust') || lower.includes('brightness') || lower.includes('volume') || lower.includes('degrees')) {
+      action = 'set_value'
+    }
+
+    // Extract value (e.g. degrees, percentage, volume)
+    let value = null
+    const numMatch = lower.match(/(\d+)/)
+    if (numMatch) {
+      value = parseInt(numMatch[1])
+    }
+
+    // Clean device name by removing stop words and verbs
+    let deviceName = prompt
+      .replace(/turn\s+on\s+(the\s+)?/i, '')
+      .replace(/turn\s+off\s+(the\s+)?/i, '')
+      .replace(/switch\s+on\s+(the\s+)?/i, '')
+      .replace(/switch\s+off\s+(the\s+)?/i, '')
+      .replace(/toggle\s+(the\s+)?/i, '')
+      .replace(/set\s+(the\s+)?/i, '')
+      .replace(/dim\s+(the\s+)?/i, '')
+      .replace(/adjust\s+(the\s+)?/i, '')
+      .replace(/play\s+music\s+(on\s+)?/i, '')
+      .replace(/pause\s+music\s+(on\s+)?/i, '')
+      .replace(/set\s+volume\s+(to\s+)?/i, '')
+      .replace(/set\s+temperature\s+(to\s+)?/i, '')
+      .replace(/set\s+thermostat\s+(to\s+)?/i, '')
+      .replace(/to\s+\d+(\s*%)?(\s*degrees)?/i, '')
+      .replace(/at\s+\d+(\s*%)?(\s*degrees)?/i, '')
+      .replace(/\d+(\s*%)?(\s*degrees)?/i, '')
+      .replace(/please/i, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    // Fallbacks if clean resulted in empty
+    if (!deviceName) {
+      if (lower.includes('light')) deviceName = 'light'
+      else if (lower.includes('plug')) deviceName = 'plug'
+      else if (lower.includes('thermostat')) deviceName = 'thermostat'
+      else if (lower.includes('speaker')) deviceName = 'speaker'
+      else deviceName = 'device'
+    }
+
+    return { type: 'SMART_DEVICE_CONTROL', deviceName, action, value }
+  }
+
   return null
 }

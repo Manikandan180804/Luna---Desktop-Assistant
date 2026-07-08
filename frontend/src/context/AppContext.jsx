@@ -13,6 +13,8 @@ export function AppProvider({ children }) {
   const [notes, setNotes] = useState([])
   const [contacts, setContacts] = useState([])
   const [calendar, setCalendar] = useState([])
+  const [smartDevices, setSmartDevices] = useState([])
+  const [iotLogs, setIotLogs] = useState([])
   const [ollamaStatus, setOllamaStatus] = useState('checking') // 'online' | 'offline' | 'checking'
   const [availableModels, setAvailableModels] = useState([])
   const [sidebarOpen, setSidebarOpen] = useState(() => {
@@ -48,6 +50,10 @@ export function AppProvider({ children }) {
       setContacts(c)
       const cal = await window.luna.listCalendar()
       setCalendar(cal)
+      const devs = await window.luna.listSmartDevices()
+      setSmartDevices(devs)
+      const logs = await window.luna.listIotLogs()
+      setIotLogs(logs)
     }
     init()
   }, [])
@@ -238,6 +244,32 @@ export function AppProvider({ children }) {
     setNotes(prev => prev.filter(n => n.id !== id))
   }, [])
 
+  const saveSmartDevices = useCallback(async (newDevices) => {
+    setSmartDevices(newDevices)
+    await window.luna.saveSmartDevices(newDevices)
+  }, [])
+
+  const controlSmartDevice = useCallback(async (id, action, value) => {
+    const res = await window.luna.controlSmartDevice(id, action, value)
+    if (res.success) {
+      const updated = await window.luna.listSmartDevices()
+      setSmartDevices(updated)
+      const logs = await window.luna.listIotLogs()
+      setIotLogs(logs)
+    }
+    return res
+  }, [])
+
+  const refreshIotLogs = useCallback(async () => {
+    const logs = await window.luna.listIotLogs()
+    setIotLogs(logs)
+  }, [])
+
+  const clearIotLogs = useCallback(async () => {
+    await window.luna.clearIotLogs()
+    setIotLogs([])
+  }, [])
+
   if (!settings) return null
 
   return (
@@ -251,6 +283,7 @@ export function AppProvider({ children }) {
       notes, saveNote, deleteNote,
       contacts, saveContacts,
       calendar, saveCalendar,
+      smartDevices, saveSmartDevices, controlSmartDevice, iotLogs, refreshIotLogs, clearIotLogs,
       ollamaStatus, availableModels, checkOllama,
       sidebarOpen, setSidebarOpen,
     }}>

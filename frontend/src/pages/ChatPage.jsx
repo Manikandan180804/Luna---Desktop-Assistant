@@ -244,6 +244,58 @@ async function executeIntent(intent, settings, onProgress) {
       onProgress({ type, status: 'error', label: 'Failed to Open Email', error: err.message })
     }
   }
+
+  // ── Smart Device Control ──────────────────────────────────────────────────
+  if (type === 'SMART_DEVICE_CONTROL') {
+    const { deviceName, action, value } = intent
+    onProgress({ type, status: 'pending', label: 'Smart Home Control…', detail: `Connecting to ${deviceName}` })
+    try {
+      const devices = await window.luna.listSmartDevices()
+      const query = deviceName.toLowerCase().trim()
+      const device = devices.find(d => 
+        d.name.toLowerCase().includes(query) || 
+        query.includes(d.name.toLowerCase()) ||
+        d.type.toLowerCase().includes(query)
+      )
+
+      if (!device) {
+        onProgress({ 
+          type, 
+          status: 'error', 
+          label: 'Smart Home Control Failed', 
+          error: `Could not find smart device matching "${deviceName}". Configure devices in the Connectors panel.` 
+        })
+        return
+      }
+
+      onProgress({ type, status: 'pending', label: `Controlling ${device.name}…`, detail: `Sending command: ${action === 'set_value' ? `${action} (${value})` : action}` })
+
+      const res = await window.luna.controlSmartDevice(device.id, action, value)
+
+      if (res.success) {
+        let actionLabel = action === 'turn_on' ? 'turned on' : (action === 'turn_off' ? 'turned off' : `set to ${value}`)
+        if (device.type === 'thermostat' && action === 'set_value') actionLabel = `set temperature to ${value}°F`
+        if (device.type === 'light' && action === 'set_value') actionLabel = `set brightness to ${value}%`
+        if (device.type === 'speaker' && action === 'set_value') actionLabel = `set volume to ${value}%`
+
+        onProgress({ 
+          type, 
+          status: 'success', 
+          label: `${device.name} Controlled`, 
+          detail: `Successfully ${actionLabel}`,
+          device: res.device,
+          actionLabel,
+          haStatus: res.haStatus,
+          mqttStatus: res.mqttStatus
+        })
+        toast.success(`${device.name} ${actionLabel}`)
+      } else {
+        onProgress({ type, status: 'error', label: 'Smart Home Control Failed', error: res.error })
+      }
+    } catch (err) {
+      onProgress({ type, status: 'error', label: 'Smart Home Control Failed', error: err.message })
+    }
+  }
 }
 
 // ─── Message component ────────────────────────────────────────────────────────
@@ -412,8 +464,44 @@ export default function ChatPage() {
     stopSpeaking()
     setIsSpeaking(false)
 
+    if (window.luna && window.luna.isElectron) {
+      let active = true;
+      toast.info('Local voice recognition active. Speak now...');
+      
+      window.luna.startLocalSpeechRecognition().then((res) => {
+        if (!active) return;
+        if (res.success) {
+          setInput(res.text);
+          sendMessage(res.text);
+        } else {
+          if (res.error === 'No speech detected') {
+            toast.error('No speech detected. Please speak clearly into your microphone.');
+          } else {
+            toast.error(`Speech recognition failed: ${res.error}`);
+          }
+        }
+        setIsListening(false);
+      }).catch((err) => {
+        if (!active) return;
+        toast.error(`Local voice recognition error: ${err.message}`);
+        setIsListening(false);
+      });
+
+      return () => {
+        active = false;
+      };
+    }
+
+    let startTimeout = null
+    let startDelayTimeout = null
+
     try {
       const rec = new VoiceRecognition({ continuous: false, interimResults: true })
+      
+      rec.onStartCallback = () => {
+        if (startTimeout) clearTimeout(startTimeout)
+      };
+
       rec.onResultCallback = ({ final, interim }) => {
         if (interim) {
           setInput(interim)
@@ -427,18 +515,51 @@ export default function ChatPage() {
       rec.onErrorCallback = (err) => {
         console.warn('STT Error:', err)
         setIsListening(false)
+        if (startTimeout) clearTimeout(startTimeout)
+        if (startDelayTimeout) clearTimeout(startDelayTimeout)
+        if (err === 'not-allowed') {
+          toast.error('Microphone access denied. Please check your system privacy/security settings.')
+        } else if (err === 'network') {
+          toast.error('Speech recognition network error. (Note: Electron restricts the Web Speech API; please run in Google Chrome for voice input).')
+        } else if (err === 'no-speech') {
+          toast.error('No speech detected. Please try again.')
+        } else if (err === 'aborted') {
+          // ignore
+        } else {
+          toast.error(`Speech Recognition error: ${err}`)
+        }
       };
       rec.onEndCallback = () => {
         setIsListening(false)
+        if (startTimeout) clearTimeout(startTimeout)
+        if (startDelayTimeout) clearTimeout(startDelayTimeout)
       };
       activeRecRef.current = rec
-      rec.start()
+
+      startTimeout = setTimeout(() => {
+        if (isListening && activeRecRef.current && !activeRecRef.current.hasStarted) {
+          console.warn('STT Start Timeout: Microphone not responding.')
+          toast.error('Microphone not responding. Please check your system privacy settings and browser permissions.')
+          setIsListening(false)
+        }
+      }, 4500)
+
+      // Add a small 250ms delay to allow any background/wake-word listeners to release the microphone device
+      startDelayTimeout = setTimeout(() => {
+        if (isListening && activeRecRef.current) {
+          rec.start()
+        }
+      }, 250)
     } catch (err) {
       toast.error('Could not start Speech Recognition')
       setIsListening(false)
+      if (startTimeout) clearTimeout(startTimeout)
+      if (startDelayTimeout) clearTimeout(startDelayTimeout)
     }
 
     return () => {
+      if (startTimeout) clearTimeout(startTimeout)
+      if (startDelayTimeout) clearTimeout(startDelayTimeout)
       if (activeRecRef.current) {
         activeRecRef.current.stop()
       }
@@ -927,7 +1048,7 @@ Extract new user preferences, favorite apps, writing styles, or key personal fac
               background: isListening ? 'rgba(39, 199, 184, 0.08)' : 'transparent',
             }}
           >
-            {isListening ? <Mic size={14} className="animation-pulse" /> : <MicOff size={14} />}
+            {isListening ? <Mic size={14} className="animation-pulse" style={{ color: 'var(--accent-light)' }} /> : <Mic size={14} />}
           </button>
           <textarea
             ref={textareaRef}

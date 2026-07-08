@@ -1,0 +1,48 @@
+[
+  {
+    "id": "light-living-room",
+    "name": "Living Room Lamp",
+    "type": "light",
+    "room": "Living Room",
+    "state": "off",
+    "brightness": 80,
+    "integration": "mock",
+    "entityId": "light.living_room_lamp",
+    "topic": "luna/home/light/living_room"
+  },
+  {
+    "id": "plug-coffee-maker",
+    "name": "Coffee Maker",
+    "type": "plug",
+    "room": "Kitchen",
+    "state": "off",
+    "powerWatts": 0,
+    "integration": "mock",
+    "entityId": "switch.coffee_maker",
+    "topic": "luna/home/plug/coffee_maker"
+  },
+  {
+    "id": "thermostat-hallway",
+    "name": "Hallway Climate",
+    "type": "thermostat",
+    "room": "Hallway",
+    "state": "cool",
+    "temperature": 72,
+    "targetTemperature": 70,
+    "integration": "mock",
+    "entityId": "climate.hallway_thermostat",
+    "topic": "luna/home/thermostat/hallway"
+  },
+  {
+    "id": "speaker-studio",
+    "name": "Studio Speakers",
+    "type": "speaker",
+    "room": "Studio",
+    "state": "paused",
+    "volume": 50,
+    "track": "Ambient Focus Beats",
+    "integration": "mock",
+    "entityId": "media_player.studio_speaker",
+    "topic": "luna/home/speaker/studio"
+  }
+]

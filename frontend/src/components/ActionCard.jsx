@@ -2,7 +2,7 @@ import React from 'react'
 import {
   CheckCircle, XCircle, Clock, FolderOpen, Search, FileText,
   Bell, ExternalLink, Play, Loader, AlertCircle, ChevronRight,
-  Folder, File, HardDrive
+  Folder, File, HardDrive, Lightbulb, Power, Sliders, Volume2
 } from 'lucide-react'
 
 const STATUS_ICON = {
@@ -20,6 +20,7 @@ const ACTION_META = {
   OPEN_APP:         { icon: Play,        color: '#8b5cf6', label: 'App Launch' },
   OPEN_URL:         { icon: ExternalLink,color: '#3b82f6', label: 'Open Link' },
   COMPOSE_EMAIL:    { icon: FileText,    color: '#ec4899', label: 'Email Draft' },
+  SMART_DEVICE_CONTROL: { icon: Lightbulb, color: '#38bdf8', label: 'Smart Home' },
 }
 
 // ─── Search result row ────────────────────────────────────────────────────────
@@ -200,6 +201,49 @@ export default function ActionCard({ action }) {
           <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
             Launched <strong style={{ color: 'var(--text-primary)' }}>{appLabel}</strong>
           </span>
+        </div>
+      )}
+
+      {/* Smart Device control detail */}
+      {type === 'SMART_DEVICE_CONTROL' && status === 'success' && action?.device && (
+        <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Lightbulb size={12} style={{ color: '#38bdf8' }} />
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+              Device: <strong style={{ color: 'var(--text-primary)' }}>{action.device.name}</strong> • Location: <strong>{action.device.room}</strong>
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+            <span>HA: <strong style={{ color: action.haStatus === 'API request succeeded' ? 'var(--accent)' : 'var(--text-secondary)' }}>{action.haStatus}</strong></span>
+            <span>•</span>
+            <span>MQTT: <strong style={{ color: action.mqttStatus?.startsWith('Published') ? 'var(--accent)' : 'var(--text-secondary)' }}>{action.mqttStatus}</strong></span>
+          </div>
+          
+          {/* Interactive control button directly inside chat card */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+            <button 
+              type="button"
+              onClick={async () => {
+                const toggledAction = (action.device.state === 'on' || action.device.state === 'playing' || action.device.state === 'heat') ? 'turn_off' : 'turn_on';
+                await window.luna.controlSmartDevice(action.device.id, toggledAction);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 8px',
+                borderRadius: 6,
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid var(--border)',
+                fontSize: 10,
+                color: 'var(--text-primary)',
+                cursor: 'pointer'
+              }}
+            >
+              <Power size={10} />
+              Toggle Power
+            </button>
+          </div>
         </div>
       )}
     </div>

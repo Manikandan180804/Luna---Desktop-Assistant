@@ -92,6 +92,21 @@ function mockResponse({ prompt, settings, memory, messages }) {
     return `📁 **Folder Organizer**\n\nI'll organize your **${folder}** folder by sorting files into categorized subfolders:\n\n- 📄 Documents (.pdf, .docx, .txt, .xlsx)\n- 🖼️ Images (.png, .jpg, .gif, .webp)\n- 🎵 Media (.mp3, .mp4, .mkv)\n- 📦 Archives (.zip, .rar)\n\n[ACTION: ORGANIZE_FOLDER ${folder}]\n\nShall I proceed?${memoryLine}`
   }
 
+  // ── Smart Home Control ────────────────────────────────────────────────────
+  if (
+    lower.includes('light') ||
+    lower.includes('plug') ||
+    lower.includes('switch') ||
+    lower.includes('thermostat') ||
+    lower.includes('temp') ||
+    lower.includes('speaker') ||
+    lower.includes('volume')
+  ) {
+    if (lower.includes('on') || lower.includes('off') || lower.includes('set') || lower.includes('dim') || lower.includes('adjust') || lower.includes('play') || lower.includes('pause')) {
+      return `Sure, I'll process that local smart device control command for you. Controlling your smart home devices requires no external cloud connections.${memoryLine}`
+    }
+  }
+
   // ── Open apps / URLs ──────────────────────────────────────────────────────
   if (lower.includes('open') || lower.includes('launch') || lower.includes('start')) {
     if (lower.includes('notepad') || lower.includes('editor')) return `Opening Notepad.\n\n[ACTION: APP notepad]`

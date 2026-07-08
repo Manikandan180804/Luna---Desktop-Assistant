@@ -54,23 +54,24 @@ export default function Sidebar() {
               <Plus size={13}/> {t.newChat}
             </button>
             <button
-              className="btn btn-icon btn-primary"
-              style={{ marginLeft: 6 }}
+              className="btn btn-icon btn-ghost"
+              style={{ marginLeft: 6, border: '1px solid var(--border)', background: 'transparent', padding: 0 }}
               onClick={() => setSidebarOpen(false)}
               title="Collapse Sidebar"
             >
-              <Menu size={20}/>
+              <ChevronLeft size={16}/>
             </button>
           </div>
         ) : (
           <div className="flex flex-col gap-2 items-center">
             <button className="btn btn-icon btn-primary" onClick={handleNewChat} title={t.newChat}><Plus size={18}/></button>
             <button
-              className="btn btn-icon btn-primary"
+              className="btn btn-icon btn-ghost"
+              style={{ border: '1px solid var(--border)', background: 'transparent', padding: 0 }}
               onClick={() => setSidebarOpen(true)}
               title="Expand Sidebar"
             >
-              <Menu size={20}/>
+              <ChevronRight size={16}/>
             </button>
           </div>
         )}

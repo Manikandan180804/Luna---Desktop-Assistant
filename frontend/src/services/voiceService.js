@@ -81,12 +81,16 @@ export class VoiceRecognition {
     this.recognition.lang = options.lang || 'en-US';
 
     this.isListening = false;
+    this.hasStarted = false;
+    this.onStartCallback = null;
     this.onResultCallback = null;
     this.onEndCallback = null;
     this.onErrorCallback = null;
 
     this.recognition.onstart = () => {
       this.isListening = true;
+      this.hasStarted = true;
+      if (this.onStartCallback) this.onStartCallback();
     };
 
     this.recognition.onresult = (event) => {
@@ -125,6 +129,9 @@ export class VoiceRecognition {
       this.recognition.start();
     } catch (e) {
       console.warn('Recognition start error:', e);
+      if (this.onErrorCallback) {
+        this.onErrorCallback(e.message || 'start-failed');
+      }
     }
   }
 
